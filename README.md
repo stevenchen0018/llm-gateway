@@ -1,7 +1,6 @@
 # llm-gateway
 
-企业级大模型网关（Go + Gin + Redis + PostgreSQL）。
-[《大模型网关：大模型时代的智能交通枢纽》](https://tech.dewu.com/article?id=204) 实现：
+企业级大模型网关（Go + Gin + Redis + PostgreSQL）实现：
 模型纳管/市场、OpenAI 兼容统一入口、跨厂商模型调度与分钟级容灾、Key+模型双维度
 TPM/QPS 精准限流、"预算申请→调用监控→预算预警→模型调度→费用查看"成本治理闭环，
 以及分钟级可观测与告警。
