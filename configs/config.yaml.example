@@ -1,0 +1,63 @@
+# Copy to config.yaml and adjust for your environment. Every value here can
+# also be overridden by an LLM_GATEWAY_<SECTION>_<FIELD> environment
+# variable (e.g. LLM_GATEWAY_POSTGRES_PASSWORD).
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+  read_timeout: 30s
+  write_timeout: 120s
+  shutdown_timeout: 15s
+  # Proxies (IPs/CIDRs) whose X-Forwarded-For is trusted when deriving the client IP
+  # for Key IP whitelists and logs. Empty = trust none (use the TCP peer address).
+  # Behind a load balancer, list it here, e.g. ["10.0.0.0/8"].
+  trusted_proxies: []
+
+postgres:
+  host: "127.0.0.1"
+  port: 5432
+  user: "llmgateway"
+  password: "llmgateway"
+  dbname: "llmgateway"
+  sslmode: "disable"
+  timezone: "Asia/Shanghai"   # day buckets in dashboards follow this zone
+  auto_migrate: true          # apply pending schema migrations at startup (recommended)
+  max_open_conns: 50
+  max_idle_conns: 10
+  conn_max_lifetime: 1h
+
+redis:
+  addr: "127.0.0.1:6379"
+  password: ""
+  db: 0
+
+jwt:
+  secret: "change-me-in-production"
+  ttl: 24h
+
+# bootstrap only: creates the first super admin when none exists;
+# afterwards accounts live in the database (change the password after first login)
+admin:
+  username: "admin"
+  password: "change-me-in-production"
+
+log:
+  level: "info"      # debug|info|warn|error
+  format: "json"      # json|console
+  prompt_max_chars: 500 # 0 disables prompt logging entirely
+
+async:
+  usage_buffer_size: 10000
+  usage_workers: 4
+  request_log_buffer_size: 10000   # queued request records (prompt audit); dropped when full
+
+notifier:
+  feishu_webhook_url: "" # Feishu custom-bot webhook; empty disables delivery (alerts are still recorded)
+
+budget:
+  director_limit: 10000   # budgets up to this amount are approved by a director (D); above it, by the CTO
+
+digest:
+  enabled: true           # weekly usage/cost push to owners and their +1 manager
+  weekday: 1              # 0=Sunday .. 6=Saturday
+  hour: 9

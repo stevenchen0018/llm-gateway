@@ -1,0 +1,2 @@
+ALTER TABLE api_keys DROP CONSTRAINT IF EXISTS fk_api_keys_budget;
+DROP TABLE IF EXISTS budgets;

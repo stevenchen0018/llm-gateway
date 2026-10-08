@@ -1,0 +1,251 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "LLM Gateway 统一大模型 API",
+    "version": "1.0.0",
+    "description": "OpenAI 兼容的统一大模型接入接口。业务只需携带 `model` 调用统一 API，网关负责厂商匹配、按 API Key 命中调度策略、跨厂商容灾、Key/模型/部门三级 TPM·QPS 限流与预算管控。\n\n可直接使用 OpenAI 官方 SDK，只需把 `base_url` 指向网关、`api_key` 换成网关分发的 Key。"
+  },
+  "servers": [{ "url": "/v1" }],
+  "security": [{ "bearerAuth": [] }],
+  "tags": [
+    { "name": "对话", "description": "文本生成与多轮对话" },
+    { "name": "补全", "description": "兼容旧版单 prompt 接口" },
+    { "name": "向量", "description": "文本向量化" },
+    { "name": "模型", "description": "可用模型列表" }
+  ],
+  "paths": {
+    "/chat/completions": {
+      "post": {
+        "tags": ["对话"],
+        "operationId": "createChatCompletion",
+        "summary": "创建对话补全",
+        "description": "根据消息列表生成回复。`model` 可以是模型名（如 `deepseek-r1`），也可以是 `供应商/模型`（如 `aliyun/deepseek-r1`）固定调用渠道、或 `厂商/模型` 限定模型厂商；同一模型由多家供应商提供时，按该 Key 命中的调度策略或厂商的供应商选择方式路由，失败自动切换到下一家供应商。Key 设置了可用模型时，名单外的模型返回 403 `model_not_allowed`。",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": {
+            "schema": { "$ref": "#/components/schemas/ChatCompletionRequest" },
+            "example": { "model": "deepseek-r1", "messages": [{ "role": "system", "content": "你是一个专业的运维助手" }, { "role": "user", "content": "分析这组告警的根因" }], "temperature": 0.7, "max_tokens": 1024 }
+          } }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": { "X-Request-Id": { "$ref": "#/components/headers/RequestId" } },
+            "content": { "application/json": {
+              "schema": { "$ref": "#/components/schemas/ChatCompletionResponse" },
+              "example": { "id": "5d1c0f0e-8a0b-4c55-9c3e-2f2b0c9d6a11", "model": "deepseek-r1", "created": 1790571050, "choices": [{ "index": 0, "message": { "role": "assistant", "content": "根因是……" }, "finish_reason": "stop" }], "usage": { "prompt_tokens": 32, "completion_tokens": 186, "total_tokens": 218 } }
+            } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "402": { "$ref": "#/components/responses/BudgetExceeded" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "502": { "$ref": "#/components/responses/Upstream" },
+          "503": { "$ref": "#/components/responses/Unavailable" }
+        }
+      }
+    },
+    "/completions": {
+      "post": {
+        "tags": ["补全"],
+        "operationId": "createCompletion",
+        "summary": "创建文本补全（旧版）",
+        "description": "单个 `prompt` 的兼容接口，内部按一条 user 消息处理，路由、限流与计费规则与对话接口一致。",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": {
+            "schema": { "$ref": "#/components/schemas/CompletionRequest" },
+            "example": { "model": "qwen-max", "prompt": "为这款商品写一句推荐语：", "max_tokens": 64 }
+          } }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": { "application/json": {
+              "schema": { "$ref": "#/components/schemas/CompletionResponse" },
+              "example": { "id": "b7f5…", "model": "qwen-max", "created": 1790571050, "choices": [{ "index": 0, "text": "轻盈透气，一穿就爱上。", "finish_reason": "stop" }], "usage": { "prompt_tokens": 12, "completion_tokens": 14, "total_tokens": 26 } }
+            } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "402": { "$ref": "#/components/responses/BudgetExceeded" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "502": { "$ref": "#/components/responses/Upstream" }
+        }
+      }
+    },
+    "/embeddings": {
+      "post": {
+        "tags": ["向量"],
+        "operationId": "createEmbedding",
+        "summary": "创建文本向量",
+        "description": "将文本转换为向量。`input` 可以是字符串或字符串数组。",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": {
+            "schema": { "$ref": "#/components/schemas/EmbeddingsRequest" },
+            "example": { "model": "text-embedding-v4", "input": ["轻薄羽绒服", "加厚保暖棉服"] }
+          } }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": { "application/json": {
+              "schema": { "$ref": "#/components/schemas/EmbeddingsResponse" },
+              "example": { "model": "text-embedding-v4", "data": [{ "index": 0, "embedding": [0.0123, -0.0456, 0.0789] }], "usage": { "prompt_tokens": 8, "completion_tokens": 0, "total_tokens": 8 } }
+            } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "402": { "$ref": "#/components/responses/BudgetExceeded" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "502": { "$ref": "#/components/responses/Upstream" }
+        }
+      }
+    },
+    "/models": {
+      "get": {
+        "tags": ["模型"],
+        "operationId": "listModels",
+        "summary": "列出可用模型",
+        "description": "返回模型市场中已上架的模型。",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": { "application/json": {
+              "schema": { "$ref": "#/components/schemas/ModelList" },
+              "example": { "object": "list", "data": [{ "id": "deepseek-r1", "object": "model", "owned_by": "aliyun" }] }
+            } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "description": "网关分发的 API Key，形如 `sk-xxxxxxxx`。在控制台「API Key · Key 申请」提交，审批后获得（密钥仅展示一次）。" }
+    },
+    "headers": {
+      "RequestId": { "description": "本次调用的唯一 ID，排查问题时提供给管理员，可在「调用日志」中检索", "schema": { "type": "string" } }
+    },
+    "schemas": {
+      "ChatMessage": {
+        "type": "object",
+        "required": ["role", "content"],
+        "properties": {
+          "role": { "type": "string", "enum": ["system", "user", "assistant"], "description": "消息角色" },
+          "content": { "type": "string", "description": "消息内容" }
+        }
+      },
+      "ChatCompletionRequest": {
+        "type": "object",
+        "required": ["model", "messages"],
+        "properties": {
+          "model": { "type": "string", "description": "模型名、`供应商/模型` 或 `厂商/模型`，例如 `deepseek-r1`、`aliyun/deepseek-r1`" },
+          "messages": { "type": "array", "items": { "$ref": "#/components/schemas/ChatMessage" }, "description": "对话消息，按时间顺序" },
+          "temperature": { "type": "number", "minimum": 0, "maximum": 2, "description": "采样温度，越高越随机" },
+          "top_p": { "type": "number", "minimum": 0, "maximum": 1, "description": "核采样概率阈值" },
+          "max_tokens": { "type": "integer", "minimum": 1, "description": "最大输出 Token 数；同时用于 TPM 预占，建议按实际需要设置" },
+          "stream": { "type": "boolean", "default": false, "description": "为 true 时以 SSE（`text/event-stream`，`chat.completion.chunk` + `data: [DONE]`）返回，兼容 IDE 编码助手与 OpenAI SDK 的流式调用；网关在拿到完整回复后分块推送，末块携带 usage" }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "properties": {
+          "prompt_tokens": { "type": "integer", "description": "输入 Token 数" },
+          "completion_tokens": { "type": "integer", "description": "输出 Token 数" },
+          "total_tokens": { "type": "integer", "description": "合计，计费与 TPM 结算依据" }
+        }
+      },
+      "ChatCompletionResponse": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "请求 ID（同 X-Request-Id）" },
+          "model": { "type": "string", "description": "请求时传入的模型名" },
+          "created": { "type": "integer", "description": "Unix 时间戳（秒）" },
+          "choices": { "type": "array", "items": { "type": "object", "properties": {
+            "index": { "type": "integer" },
+            "message": { "$ref": "#/components/schemas/ChatMessage" },
+            "finish_reason": { "type": "string", "description": "stop / length 等" }
+          } } },
+          "usage": { "$ref": "#/components/schemas/Usage" }
+        }
+      },
+      "CompletionRequest": {
+        "type": "object",
+        "required": ["model", "prompt"],
+        "properties": {
+          "model": { "type": "string", "description": "模型名" },
+          "prompt": { "type": "string", "description": "提示词" },
+          "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+          "max_tokens": { "type": "integer", "minimum": 1 }
+        }
+      },
+      "CompletionResponse": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "model": { "type": "string" },
+          "created": { "type": "integer" },
+          "choices": { "type": "array", "items": { "type": "object", "properties": {
+            "index": { "type": "integer" }, "text": { "type": "string" }, "finish_reason": { "type": "string" }
+          } } },
+          "usage": { "$ref": "#/components/schemas/Usage" }
+        }
+      },
+      "EmbeddingsRequest": {
+        "type": "object",
+        "required": ["model", "input"],
+        "properties": {
+          "model": { "type": "string", "description": "向量模型名" },
+          "input": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }], "description": "待向量化的文本，字符串或字符串数组" }
+        }
+      },
+      "EmbeddingsResponse": {
+        "type": "object",
+        "properties": {
+          "model": { "type": "string" },
+          "data": { "type": "array", "items": { "type": "object", "properties": {
+            "index": { "type": "integer" },
+            "embedding": { "type": "array", "items": { "type": "number" } }
+          } } },
+          "usage": { "$ref": "#/components/schemas/Usage" }
+        }
+      },
+      "ModelList": {
+        "type": "object",
+        "properties": {
+          "object": { "type": "string", "example": "list" },
+          "data": { "type": "array", "items": { "type": "object", "properties": {
+            "id": { "type": "string" }, "object": { "type": "string" }, "owned_by": { "type": "string", "description": "厂商编码" }
+          } } }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "object", "properties": {
+            "message": { "type": "string", "description": "可读的错误说明" },
+            "type": { "type": "string", "description": "错误大类" },
+            "code": { "type": "string", "description": "机器可读的错误码" },
+            "param": { "type": "string" }
+          } }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": { "description": "请求参数错误，或该模型未配置可用路由（`invalid_argument`）；提示词命中内容过滤规则时返回 `content_blocked`（未发送给厂商、不计费）", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": { "message": "invalid argument: no route configured for model \"foo\"", "type": "invalid_request_error", "code": "invalid_argument" } } } } },
+      "Unauthorized": { "description": "缺少、无效或未生效的 API Key（`missing_api_key` / `invalid_api_key` / `inactive_api_key`）", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": { "message": "Invalid API key", "type": "invalid_request_error", "code": "invalid_api_key" } } } } },
+      "BudgetExceeded": { "description": "该 Key 绑定的预算已耗尽（`budget_exceeded`），需追加预算", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": { "message": "Budget exceeded for this API key", "type": "budget_error", "code": "budget_exceeded" } } } } },
+      "Forbidden": { "description": "调用方 IP 不在该 Key 的 IP 白名单内（`ip_not_allowed`）、请求的模型不在该 Key 的可用模型中（`model_not_allowed`），或 Key 所属部门已停用（`department_disabled`）", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "RateLimited": { "description": "触发限流（`rate_limited`）：Key、模型或部门的 QPS / TPM 超过配额。请指数退避后重试，或申请提升配额", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": { "message": "Rate limit exceeded, please retry later", "type": "rate_limit_error", "code": "rate_limited" } } } } },
+      "Upstream": { "description": "所有候选厂商调用均失败（`upstream_error`），网关已自动尝试容灾切换", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "Unavailable": { "description": "暂无健康的候选模型（`no_healthy_candidate`），或服务数据库未就绪（`schema_not_ready`）", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+    }
+  }
+}
