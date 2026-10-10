@@ -12,6 +12,9 @@ server:
   # for Key IP whitelists and logs. Empty = trust none (use the TCP peer address).
   # Behind a load balancer, list it here, e.g. ["10.0.0.0/8"].
   trusted_proxies: []
+  # Built console (web/dist) to serve with SPA fallback; empty = API only.
+  # The Docker image sets it to /app/web.
+  web_root: ""
 
 postgres:
   host: "127.0.0.1"
@@ -61,3 +64,11 @@ digest:
   enabled: true           # weekly usage/cost push to owners and their +1 manager
   weekday: 1              # 0=Sunday .. 6=Saturday
   hour: 9
+
+# Cluster deployment (docs/deployment.md): every node serves the full API; all nodes
+# MUST share one PostgreSQL, one Redis and the same jwt.secret.
+cluster:
+  node_type: "master"     # master: migrations, admin bootstrap, scheduled jobs (deploy exactly one)
+                          # slave:  stateless replica, waits for the master's schema
+  node_name: ""           # empty = hostname; shown in logs and the X-Gateway-Node response header
+  schema_wait: 120s       # how long a slave waits for the master to migrate at startup

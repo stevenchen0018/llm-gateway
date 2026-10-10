@@ -14,7 +14,7 @@
         <el-table-column label="级别" width="100"><template #default="{ row }"><StatusBadge :text="row.level === 'warning' ? '重要' : '通知'" :tone="row.level === 'warning' ? 'warning' : 'primary'" /></template></el-table-column>
         <el-table-column label="展示" width="90"><template #default="{ row }"><el-switch :model-value="row.active" @change="(v: boolean) => toggle(row, v)" /></template></el-table-column>
         <el-table-column label="发布时间" width="170"><template #default="{ row }"><span class="num muted">{{ fmtTime(row.created_at) }}</span></template></el-table-column>
-        <el-table-column label="" width="130" align="right" fixed="right">
+        <el-table-column label="操作" width="130" align="right" fixed="right" class-name="col-actions">
           <template #default="{ row }">
             <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
             <el-popconfirm title="删除该公告？" @confirm="remove(row)"><template #reference><el-button link type="danger">删除</el-button></template></el-popconfirm>

@@ -1,0 +1,125 @@
+# 单机多节点集群：Nginx(负载均衡) → 1 个 master + N 个 slave → 共享 PostgreSQL + Redis
+#   cd deployments/cluster && cp .env.example .env && vi .env
+#   docker compose up -d --build
+#   docker compose up -d --scale gateway-slave=4     # 扩容 slave（Nginx 10 秒内自动发现）
+#
+# master：执行数据库迁移、初始化超管、运行定时任务（周报推送、请求记录清理）
+# slave ：无状态副本，等待 master 完成迁移后对外服务；与 master 处理完全相同的 API
+# 所有节点必须连接同一个 PostgreSQL 和同一个 Redis（限流 TPM/QPS、熔断状态、任务锁都在 Redis）
+
+name: ${COMPOSE_PROJECT_NAME:-llm-gateway-cluster}
+
+x-gateway-env: &gateway-env
+  TZ: ${TZ:-Asia/Shanghai}
+  LLM_GATEWAY_POSTGRES_HOST: postgres
+  LLM_GATEWAY_POSTGRES_PORT: "5432"
+  LLM_GATEWAY_POSTGRES_USER: llmgateway
+  LLM_GATEWAY_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+  LLM_GATEWAY_POSTGRES_DBNAME: llmgateway
+  LLM_GATEWAY_POSTGRES_MAX_OPEN_CONNS: ${PG_MAX_OPEN_CONNS:-40}
+  LLM_GATEWAY_REDIS_ADDR: redis:6379
+  LLM_GATEWAY_REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+  LLM_GATEWAY_JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+  LLM_GATEWAY_ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+  LLM_GATEWAY_ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env}
+  LLM_GATEWAY_LOG_LEVEL: ${LOG_LEVEL:-info}
+  LLM_GATEWAY_NOTIFIER_FEISHU_WEBHOOK_URL: ${FEISHU_WEBHOOK_URL:-}
+  # 只信任集群网段内的 Nginx 传来的客户端 IP（Key IP 白名单、日志来源 IP）
+  LLM_GATEWAY_SERVER_TRUSTED_PROXIES: ${CLUSTER_SUBNET:-172.28.0.0/16}
+
+x-gateway: &gateway
+  image: ${GATEWAY_IMAGE:-llm-gateway:latest}
+  restart: unless-stopped
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+  networks: [gateway]
+  stop_grace_period: 30s
+  logging:
+    driver: json-file
+    options: { max-size: "50m", max-file: "5" }
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    command: ["postgres", "-c", "max_connections=300"]
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      POSTGRES_USER: llmgateway
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: llmgateway
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks: [gateway]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U llmgateway -d llmgateway"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    volumes:
+      - redis-data:/data
+    networks: [gateway]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  gateway-master:
+    <<: *gateway
+    build:
+      context: ../..
+      dockerfile: deployments/Dockerfile
+    hostname: gw-master
+    environment:
+      <<: *gateway-env
+      LLM_GATEWAY_CLUSTER_NODE_TYPE: master
+      LLM_GATEWAY_CLUSTER_NODE_NAME: gw-master
+
+  gateway-slave:
+    <<: *gateway
+    # 节点名默认取容器 hostname（容器 ID），可从响应头 X-Gateway-Node 看到是哪个节点处理的
+    environment:
+      <<: *gateway-env
+      LLM_GATEWAY_CLUSTER_NODE_TYPE: slave
+      LLM_GATEWAY_CLUSTER_SCHEMA_WAIT: 180s
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      gateway-master: { condition: service_healthy }
+    deploy:
+      replicas: ${SLAVE_REPLICAS:-2}
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      gateway-master: { condition: service_healthy }
+    ports:
+      - "${LB_PORT:-80}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks: [gateway]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/nginx-health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+networks:
+  gateway:
+    ipam:
+      config:
+        - subnet: ${CLUSTER_SUBNET:-172.28.0.0/16}
+
+volumes:
+  postgres-data:
+  redis-data:

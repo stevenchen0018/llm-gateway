@@ -22,6 +22,40 @@ type Config struct {
 	Notifier NotifierConfig `mapstructure:"notifier"`
 	Budget   BudgetConfig   `mapstructure:"budget"`
 	Digest   DigestConfig   `mapstructure:"digest"`
+	Cluster  ClusterConfig  `mapstructure:"cluster"`
+}
+
+// Node types of a cluster deployment. Every node serves the full gateway and
+// console API; they differ only in who maintains the shared state.
+const (
+	NodeMaster = "master" // applies schema migrations, bootstraps the admin, runs scheduled jobs
+	NodeSlave  = "slave"  // stateless replica: waits for the schema, serves traffic only
+)
+
+// ClusterConfig describes this process's role when several gateway nodes
+// share one PostgreSQL and one Redis behind a load balancer.
+type ClusterConfig struct {
+	NodeType string `mapstructure:"node_type"`
+	// NodeName identifies the node in logs and the X-Gateway-Node response
+	// header; empty = the hostname (the container ID under Docker).
+	NodeName string `mapstructure:"node_name"`
+	// SchemaWait bounds how long a slave waits at startup for the master to
+	// bring the database schema up to date.
+	SchemaWait time.Duration `mapstructure:"schema_wait"`
+}
+
+// IsMaster reports whether this node owns migrations and scheduled jobs.
+func (c ClusterConfig) IsMaster() bool { return c.NodeType != NodeSlave }
+
+// Name returns the configured node name, falling back to the hostname.
+func (c ClusterConfig) Name() string {
+	if c.NodeName != "" {
+		return c.NodeName
+	}
+	if h, err := os.Hostname(); err == nil {
+		return h
+	}
+	return "gateway"
 }
 
 // BudgetConfig drives the tiered approval flow (源头管控): budgets up to
@@ -48,6 +82,10 @@ type ServerConfig struct {
 	// source_ip in logs). Empty = trust none: the TCP peer address is used,
 	// so clients cannot spoof their address with a header.
 	TrustedProxies []string `mapstructure:"trusted_proxies"`
+	// WebRoot is the built console (web/dist). When set, the gateway serves it
+	// with an SPA fallback so one process/image hosts API and console; empty =
+	// API only (run the console from vite or a separate web server).
+	WebRoot string `mapstructure:"web_root"`
 }
 
 type PostgresConfig struct {
@@ -147,7 +185,23 @@ func Load(configPath string) (*Config, error) {
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
+	// LLM_GATEWAY_SERVER_TRUSTED_PROXIES="10.0.0.0/8, 172.16.0.0/12"
+	cfg.Server.TrustedProxies = splitList(strings.Join(cfg.Server.TrustedProxies, ","))
+	cfg.Cluster.NodeType = strings.ToLower(strings.TrimSpace(cfg.Cluster.NodeType))
+	if cfg.Cluster.NodeType != NodeMaster && cfg.Cluster.NodeType != NodeSlave {
+		return nil, fmt.Errorf("cluster.node_type must be %q or %q, got %q", NodeMaster, NodeSlave, cfg.Cluster.NodeType)
+	}
 	return &cfg, nil
+}
+
+func splitList(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func setDefaults(v *viper.Viper) {
@@ -156,6 +210,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server.read_timeout", "30s")
 	v.SetDefault("server.write_timeout", "120s")
 	v.SetDefault("server.shutdown_timeout", "15s")
+	v.SetDefault("server.trusted_proxies", []string{})
+	v.SetDefault("server.web_root", "")
 
 	v.SetDefault("postgres.host", "127.0.0.1")
 	v.SetDefault("postgres.port", 5432)
@@ -193,4 +249,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("digest.enabled", true)
 	v.SetDefault("digest.weekday", 1)
 	v.SetDefault("digest.hour", 9)
+
+	v.SetDefault("cluster.node_type", NodeMaster)
+	v.SetDefault("cluster.node_name", "")
+	v.SetDefault("cluster.schema_wait", "120s")
 }

@@ -29,7 +29,7 @@
         <el-table-column label="输入 / 输出" width="110" align="right"><template #default="{ row }"><span class="num">{{ fmtNum(row.prompt_tokens) }} / {{ fmtNum(row.completion_tokens) }}</span></template></el-table-column>
         <el-table-column label="成本" width="100" align="right"><template #default="{ row }"><span class="num">{{ fmtMoney(row.cost) }}</span></template></el-table-column>
         <el-table-column label="来源 IP" width="120"><template #default="{ row }"><span class="mono">{{ row.source_ip }}</span></template></el-table-column>
-        <el-table-column v-if="canViewPrompts" label="" width="70" align="right"><template #default="{ row }"><el-button link type="primary" @click="openDetail(row.request_id)">内容</el-button></template></el-table-column>
+        <el-table-column v-if="canViewPrompts" label="操作" width="76" align="right" class-name="col-actions"><template #default="{ row }"><el-button link type="primary" @click="openDetail(row.request_id)">内容</el-button></template></el-table-column>
       </el-table>
       <TablePager v-model:page="page" v-model:page-size="pageSize" :total="total" />
     </Panel>

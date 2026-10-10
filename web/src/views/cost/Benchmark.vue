@@ -44,7 +44,7 @@
         <el-table-column label="降幅" width="70" align="right"><template #default="{ row }"><span class="num good">-{{ row.saving_pct.toFixed(0) }}%</span></template></el-table-column>
         <el-table-column label="Token" width="90" align="right"><template #default="{ row }"><span class="num">{{ compact(row.tokens) }}</span></template></el-table-column>
         <el-table-column label="预计月度可省" width="120" align="right"><template #default="{ row }"><span class="num good">{{ fmtMoney(row.saving_monthly) }}</span></template></el-table-column>
-        <el-table-column label="" width="120" align="right" fixed="right"><template #default="{ row }"><el-button v-if="canWrite" link type="primary" @click="createPolicy(row)">创建切换策略</el-button></template></el-table-column>
+        <el-table-column label="操作" width="120" align="right" fixed="right" class-name="col-actions"><template #default="{ row }"><el-button v-if="canWrite" link type="primary" @click="createPolicy(row)">创建切换策略</el-button></template></el-table-column>
       </el-table>
       <div class="note">切换前请先在「模型体验」对比效果；创建策略后可在「模型调度 · 路由模拟」中验证命中链路。</div>
     </Panel>
@@ -58,7 +58,7 @@
         </el-table-column>
         <el-table-column :label="`近 ${days} 天节省`" width="140" align="right"><template #default="{ row }"><span class="num good">{{ savedBy(row.id) > 0 ? fmtMoney(savedBy(row.id)) : '—' }}</span></template></el-table-column>
         <el-table-column label="近期成本（折后）" width="150" align="right"><template #default="{ row }"><span class="num">{{ fmtMoney(costBy(row.id)) }}</span></template></el-table-column>
-        <el-table-column label="" width="100" align="right"><template #default="{ row }"><el-button v-if="isSuper" link type="primary" :disabled="!dirty(row)" @click="saveDiscount(row)">保存</el-button></template></el-table-column>
+        <el-table-column label="操作" width="90" align="right" class-name="col-actions"><template #default="{ row }"><el-button v-if="isSuper" link type="primary" :disabled="!dirty(row)" @click="saveDiscount(row)">保存</el-button></template></el-table-column>
       </el-table>
     </Panel>
   </div>

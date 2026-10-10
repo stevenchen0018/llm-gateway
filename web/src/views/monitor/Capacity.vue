@@ -33,7 +33,7 @@
         </el-table-column>
         <el-table-column label="QPS 利用率" width="110" align="right"><template #default="{ row }"><span v-if="row.qps_limit" class="num" :style="{ color: row.qps_util >= 80 ? colorOf(row.qps_util) : undefined }">{{ row.qps_util.toFixed(0) }}%</span><span v-else class="faint">—</span></template></el-table-column>
         <el-table-column label="状态" width="100"><template #default="{ row }"><StatusBadge v-bind="badge(row)" /></template></el-table-column>
-        <el-table-column label="" width="90" align="right"><template #default="{ row }"><el-button v-if="tab === 'keys' ? canWrite : isSuper" link type="primary" @click="openEdit(row)">调整配额</el-button></template></el-table-column>
+        <el-table-column label="操作" width="110" align="right" class-name="col-actions"><template #default="{ row }"><el-button v-if="tab === 'keys' ? canWrite : isSuper" link type="primary" @click="openEdit(row)">调整配额</el-button></template></el-table-column>
       </el-table>
       <TablePager v-model:page="lp.page.value" v-model:page-size="lp.pageSize.value" :total="lp.total.value" />
     </Panel>

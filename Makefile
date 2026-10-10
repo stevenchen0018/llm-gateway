@@ -1,4 +1,4 @@
-.PHONY: loadtest-build loadtest-qps loadtest-tpm loadtest-ramp seed seed-reset web-install web-dev web-build run build test vet lint tidy migrate-up migrate-down migrate-version dev-up dev-down
+.PHONY: docker-build compose-up compose-down cluster-up cluster-scale cluster-down loadtest-build loadtest-qps loadtest-tpm loadtest-ramp seed seed-reset web-install web-dev web-build run build test vet lint tidy migrate-up migrate-down migrate-version dev-up dev-down
 
 build:
 	go build -o bin/gateway ./cmd/gateway
@@ -58,3 +58,25 @@ loadtest-tpm: loadtest-build
 
 loadtest-ramp: loadtest-build
 	bin/loadtest -key sk-demo-a1-customer-service -model doubao-flash -mode ramp -ramp-start 20 -ramp-step 20 -ramp-max 200 -ramp-interval 5s -stop-ratio 0.3
+
+# ---- deployment (docs/deployment.md) ----
+IMAGE ?= llm-gateway:latest
+SLAVES ?= 3
+
+docker-build:
+	docker build -f deployments/Dockerfile -t $(IMAGE) .
+
+compose-up:
+	cd deployments/docker && docker compose up -d --build
+
+compose-down:
+	cd deployments/docker && docker compose down
+
+cluster-up:
+	cd deployments/cluster && docker compose up -d --build
+
+cluster-scale:
+	cd deployments/cluster && docker compose up -d --scale gateway-slave=$(SLAVES)
+
+cluster-down:
+	cd deployments/cluster && docker compose down

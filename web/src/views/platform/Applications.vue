@@ -17,7 +17,7 @@
         <el-table-column label="+1 主管" min-width="160"><template #default="{ row }"><div>{{ row.manager || '—' }}</div><div class="cell-sub">{{ row.manager_email }}</div></template></el-table-column>
         <el-table-column label="Key 数" width="80" align="right"><template #default="{ row }"><span class="num">{{ keyCount(row.id) }}</span></template></el-table-column>
         <el-table-column label="状态" width="90"><template #default="{ row }"><StatusBadge :text="row.status === 'active' ? '启用' : '停用'" :tone="row.status === 'active' ? 'success' : 'info'" /></template></el-table-column>
-        <el-table-column label="" width="80" align="right" fixed="right"><template #default="{ row }"><el-button v-if="canWrite" link type="primary" @click="openEdit(row)">编辑</el-button></template></el-table-column>
+        <el-table-column label="操作" width="80" align="right" fixed="right" class-name="col-actions"><template #default="{ row }"><el-button v-if="canWrite" link type="primary" @click="openEdit(row)">编辑</el-button></template></el-table-column>
       </el-table>
       <TablePager v-model:page="pg.page.value" v-model:page-size="pg.pageSize.value" :total="pg.total.value" />
     </Panel>

@@ -28,7 +28,7 @@
         <el-table-column label="部门" width="130"><template #default="{ row }">{{ row.department_id ? deptName(row.department_id) : '全平台' }}</template></el-table-column>
         <el-table-column label="状态" width="90"><template #default="{ row }"><StatusBadge :text="row.status === 'active' ? '正常' : '已禁用'" :tone="row.status === 'active' ? 'success' : 'danger'" /></template></el-table-column>
         <el-table-column label="最近登录" width="160"><template #default="{ row }"><span class="num muted">{{ fmtTime(row.last_login_at) }}</span></template></el-table-column>
-        <el-table-column label="" width="200" align="right" fixed="right">
+        <el-table-column label="操作" width="200" align="right" fixed="right" class-name="col-actions">
           <template #default="{ row }">
             <template v-if="row.id !== me?.id">
               <el-button link type="primary" @click="openEdit(row)">编辑</el-button>

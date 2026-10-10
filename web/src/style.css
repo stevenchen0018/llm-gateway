@@ -137,6 +137,12 @@ a { color: var(--primary); text-decoration: none; }
 /* row actions: quiet by default, colour on intent */
 .el-table .el-button.is-link.el-button--danger { color: var(--text-2); }
 .el-table .el-button.is-link.el-button--danger:hover { color: var(--danger); }
+.el-table .el-button.is-link.is-disabled, .el-table .el-button.is-link.is-disabled:hover { color: var(--text-3); }
+/* action column: buttons stay on one line, vertically centred even in tall rows */
+.el-table .col-actions .cell { white-space: nowrap; overflow: visible; text-overflow: clip; }
+.el-table .col-actions .cell > * { vertical-align: middle; }
+.el-table .col-actions .el-dropdown { vertical-align: middle; line-height: 20px; }
+.el-table .cell .el-button.is-link { height: 20px; padding: 0; }
 .el-input-number .el-input__inner { text-align: left; }
 .pre-tip { white-space: pre-line; font-family: var(--mono); }
 

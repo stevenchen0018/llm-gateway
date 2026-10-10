@@ -1,0 +1,13 @@
+.git
+.idea
+.vscode
+**/.DS_Store
+bin/
+*.log
+configs/config.yaml
+web/node_modules
+web/dist
+deployments/**/.env
+deployments/**/data
+docs/*.png
+loadtest/results

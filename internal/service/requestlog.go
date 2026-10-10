@@ -25,6 +25,19 @@ type RequestLogWorker struct {
 	settings *SettingsService
 	log      *zap.Logger
 	done     chan struct{}
+	gate     TaskGate
+}
+
+// TaskGate elects which node runs a cluster-wide scheduled job: TryAcquire
+// returns true on at most one node per ttl.
+type TaskGate interface {
+	TryAcquire(ctx context.Context, task string, ttl time.Duration) bool
+}
+
+// WithTaskGate makes the retention purge run on one node per period.
+func (w *RequestLogWorker) WithTaskGate(g TaskGate) *RequestLogWorker {
+	w.gate = g
+	return w
 }
 
 func NewRequestLogWorker(bufferSize int, repo domain.RequestLogRepository, settings *SettingsService, log *zap.Logger) *RequestLogWorker {
@@ -44,11 +57,14 @@ func (w *RequestLogWorker) Submit(l *domain.RequestLog) bool {
 	}
 }
 
-// Start runs the batch writer and the daily retention purge until ctx ends;
-// on shutdown it drains what is already buffered.
-func (w *RequestLogWorker) Start(ctx context.Context) {
+// Start runs the batch writer until ctx ends (on shutdown it drains what is
+// already buffered) and, when purge is set, the retention purge. In a cluster
+// every node writes its own records but only the master purges.
+func (w *RequestLogWorker) Start(ctx context.Context, purge bool) {
 	go w.writer(ctx)
-	go w.purger(ctx)
+	if purge {
+		go w.purger(ctx)
+	}
 }
 
 // Wait blocks until the writer has drained after its context was cancelled,
@@ -105,6 +121,9 @@ func (w *RequestLogWorker) purger(ctx context.Context) {
 		days := w.settings.Get(ctx).RequestLog.RetentionDays
 		if days <= 0 {
 			return
+		}
+		if w.gate != nil && !w.gate.TryAcquire(ctx, "request-log-purge", 5*time.Hour) {
+			return // another node purged this period
 		}
 		n, err := w.repo.PurgeBefore(ctx, time.Now().AddDate(0, 0, -days))
 		if err != nil && ctx.Err() == nil {

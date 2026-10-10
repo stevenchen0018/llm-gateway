@@ -44,7 +44,7 @@
           </template>
         </el-table-column>
         <el-table-column label="状态" width="100"><template #default="{ row }"><StatusBadge v-if="row.approval_status === 'approved'" :text="statusText[row.status as Budget['status']]" :tone="statusTone[row.status as Budget['status']]" /><span v-else class="faint">—</span></template></el-table-column>
-        <el-table-column label="" width="140" align="right" fixed="right">
+        <el-table-column label="操作" width="140" align="right" fixed="right" class-name="col-actions">
           <template #default="{ row }">
             <span v-if="row.approval_status === 'pending' && !canDecide(row)" class="faint" :title="row.approver_level === 'CTO' ? '超过总监审批额度，需超级管理员（CTO）审批' : '需部门管理员审批'">待{{ row.approver_level === 'CTO' ? ' CTO ' : '总监' }}审批</span>
             <template v-else-if="row.approval_status === 'pending'">

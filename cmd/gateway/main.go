@@ -17,6 +17,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 
 	"github.com/stevenchen/llm-gateway/internal/adapter/repository/postgres"
 	"github.com/stevenchen/llm-gateway/internal/config"
@@ -51,17 +52,20 @@ func run() error {
 		return fmt.Errorf("connect postgres: %w", err)
 	}
 
-	if cfg.Postgres.AutoMigrate {
+	isMaster := cfg.Cluster.IsMaster()
+	log = log.With(zap.String("node", cfg.Cluster.Name()), zap.String("node_type", cfg.Cluster.NodeType))
+
+	// Only the master migrates: slaves wait until the schema it maintains is
+	// at the version this binary needs (rolling upgrade: master first).
+	if isMaster && cfg.Postgres.AutoMigrate {
 		v, err := postgres.Migrate(cfg.Postgres)
 		if err != nil {
 			return fmt.Errorf("migrate database: %w", err)
 		}
 		log.Info("database schema ready", zap.Uint("version", v))
 	}
-	schemaCtx, cancelSchema := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancelSchema()
-	if st := postgres.CheckSchema(schemaCtx, db); !st.OK {
-		return fmt.Errorf("database schema not usable: %s — enable postgres.auto_migrate or run `make migrate-up`", st.Problem)
+	if err := waitSchema(db, isMaster, cfg.Cluster.SchemaWait, log); err != nil {
+		return err
 	}
 
 	rdb := redis.NewClient(&redis.Options{Addr: cfg.Redis.Addr, Password: cfg.Redis.Password, DB: cfg.Redis.DB})
@@ -74,16 +78,20 @@ func run() error {
 	app := server.Build(cfg, db, rdb, log)
 	bootCtx, cancelBoot := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelBoot()
-	if err := app.Identity.Bootstrap(bootCtx, cfg.Admin.Username, cfg.Admin.Password); err != nil {
-		return fmt.Errorf("bootstrap admin account: %w", err)
+	if isMaster {
+		if err := app.Identity.Bootstrap(bootCtx, cfg.Admin.Username, cfg.Admin.Password); err != nil {
+			return fmt.Errorf("bootstrap admin account: %w", err)
+		}
 	}
 
 	workerCtx, stopWorkers := context.WithCancel(context.Background())
 	defer stopWorkers()
 	app.UsageWorker.Start(workerCtx, cfg.Async.UsageWorkers)
-	app.RequestLogs.Start(workerCtx)
-	app.Filter.StartHitFlusher(workerCtx, 10*time.Second)
-	app.StartDigestScheduler(workerCtx, cfg.Digest)
+	app.RequestLogs.Start(workerCtx, isMaster)
+	app.Filter.StartHitFlusher(workerCtx, 10*time.Second) // additive counters: safe on every node
+	if isMaster {
+		app.StartDigestScheduler(workerCtx, cfg.Digest)
+	}
 
 	httpServer := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
@@ -120,6 +128,29 @@ func run() error {
 
 	log.Info("llm-gateway stopped cleanly")
 	return nil
+}
+
+// waitSchema checks the database schema once on a master; a slave polls it
+// for up to wait, so a cluster can start all nodes at once.
+func waitSchema(db *gorm.DB, isMaster bool, wait time.Duration, log *zap.Logger) error {
+	deadline := time.Now().Add(wait)
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		st := postgres.CheckSchema(ctx, db)
+		cancel()
+		if st.OK {
+			return nil
+		}
+		if isMaster || time.Now().After(deadline) {
+			hint := "enable postgres.auto_migrate or run `make migrate-up`"
+			if !isMaster {
+				hint = "start or upgrade the master node first (it applies migrations)"
+			}
+			return fmt.Errorf("database schema not usable: %s — %s", st.Problem, hint)
+		}
+		log.Info("waiting for master to migrate the schema", zap.String("problem", st.Problem))
+		time.Sleep(3 * time.Second)
+	}
 }
 
 // flagSet reports whether the named flag was passed explicitly on the command line.

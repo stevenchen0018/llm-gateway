@@ -1,0 +1,37 @@
+# 主节点（集群内只部署 1 个）：数据库迁移、初始化超管、定时任务 + 正常处理请求
+#   docker compose -f master.compose.yml up -d
+# 升级顺序：先升级 master，确认迁移完成、服务正常后，再逐台升级 slave
+
+name: llm-gateway-master
+
+services:
+  gateway:
+    image: ${GATEWAY_IMAGE:?set GATEWAY_IMAGE in .env}
+    container_name: llm-gateway-master
+    restart: unless-stopped
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      LLM_GATEWAY_CLUSTER_NODE_TYPE: master
+      LLM_GATEWAY_CLUSTER_NODE_NAME: ${NODE_NAME:-gw-master}
+      LLM_GATEWAY_POSTGRES_HOST: ${PG_HOST:?}
+      LLM_GATEWAY_POSTGRES_PORT: ${PG_PORT:-5432}
+      LLM_GATEWAY_POSTGRES_USER: ${PG_USER:?}
+      LLM_GATEWAY_POSTGRES_PASSWORD: ${PG_PASSWORD:?}
+      LLM_GATEWAY_POSTGRES_DBNAME: ${PG_DBNAME:?}
+      LLM_GATEWAY_POSTGRES_SSLMODE: ${PG_SSLMODE:-disable}
+      LLM_GATEWAY_POSTGRES_MAX_OPEN_CONNS: ${PG_MAX_OPEN_CONNS:-40}
+      LLM_GATEWAY_REDIS_ADDR: ${REDIS_ADDR:?}
+      LLM_GATEWAY_REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      LLM_GATEWAY_REDIS_DB: ${REDIS_DB:-0}
+      LLM_GATEWAY_JWT_SECRET: ${JWT_SECRET:?}
+      LLM_GATEWAY_ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      LLM_GATEWAY_ADMIN_PASSWORD: ${ADMIN_PASSWORD:?}
+      LLM_GATEWAY_SERVER_TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      LLM_GATEWAY_LOG_LEVEL: ${LOG_LEVEL:-info}
+      LLM_GATEWAY_NOTIFIER_FEISHU_WEBHOOK_URL: ${FEISHU_WEBHOOK_URL:-}
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options: { max-size: "50m", max-file: "5" }

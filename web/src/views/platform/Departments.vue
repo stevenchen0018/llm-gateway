@@ -30,7 +30,7 @@
           <template #default="{ row }"><div class="costcell"><span class="bar"><i :style="{ width: share(row) + '%' }" /></span><span class="num">{{ fmtMoney(row.cost_30d) }}</span></div></template>
         </el-table-column>
         <el-table-column label="状态" width="80"><template #default="{ row }"><StatusBadge :text="row.status === 'active' ? '启用' : '停用'" :tone="row.status === 'active' ? 'success' : 'info'" /></template></el-table-column>
-        <el-table-column label="" :width="isSuper ? 230 : 1" align="right" fixed="right" class-name="nowrap">
+        <el-table-column v-if="isSuper" label="操作" width="230" align="right" fixed="right" class-name="col-actions">
           <template #default="{ row }">
             <el-button v-if="isSuper" link type="primary" @click="viewData(row)">查看数据</el-button>
             <el-button v-if="isSuper" link type="primary" @click="openEdit(row)">编辑</el-button>

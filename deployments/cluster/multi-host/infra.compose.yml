@@ -1,0 +1,37 @@
+# 共享数据层（单台数据机）：PostgreSQL + Redis，所有网关节点都连这里
+#   docker compose -f infra.compose.yml up -d
+# 生产环境建议直接使用云数据库 RDS（主备）+ 云 Redis（主从，单一访问地址）。
+# 注意：网关使用单一 Redis 地址，不直接支持 Redis Cluster / Sentinel 协议，请使用提供统一入口的托管服务或代理。
+
+name: llm-gateway-infra
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: llm-gateway-postgres
+    restart: unless-stopped
+    command: ["postgres", "-c", "max_connections=500"]
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      POSTGRES_USER: ${PG_USER:?}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:?}
+      POSTGRES_DB: ${PG_DBNAME:?}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: llm-gateway-redis
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?}", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./data/redis:/data

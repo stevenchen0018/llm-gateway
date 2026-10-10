@@ -30,29 +30,30 @@
                 <el-table-column label="流量占比" width="90" align="right"><template #default="{ row: s }"><span class="num muted">{{ share(row, s) }}</span></template></el-table-column>
                 <el-table-column label="启用" width="70"><template #default="{ row: s }"><el-switch :model-value="s.status === 'active'" size="small" :disabled="!isSuper" @change="(v: string | number | boolean) => saveLink(s, { status: v ? 'active' : 'disabled' })" /></template></el-table-column>
                 <el-table-column label="备注" min-width="160" show-overflow-tooltip><template #default="{ row: s }"><span :class="{ faint: !s.remark }">{{ s.remark || '—' }}</span></template></el-table-column>
-                <el-table-column label="" width="70" align="right">
+                <el-table-column label="" width="76" align="right" class-name="col-actions">
                   <template #default="{ row: s }"><el-popconfirm v-if="isSuper" title="移除该供应商？（仍在供货的请改为停用）" width="240" @confirm="removeLink(s)"><template #reference><el-button link type="danger" size="small">移除</el-button></template></el-popconfirm></template>
                 </el-table-column>
               </el-table>
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="厂商" min-width="200">
+        <el-table-column label="厂商" min-width="170">
           <template #default="{ row }"><div class="mcell"><VendorLogo :code="row.code" :size="30" /><div><div class="cell-title">{{ row.name }}</div><div class="cell-sub mono">{{ row.code }}</div></div></div></template>
         </el-table-column>
-        <el-table-column label="说明" min-width="220" show-overflow-tooltip><template #default="{ row }">{{ row.description || '—' }}</template></el-table-column>
+        <el-table-column label="说明" min-width="160" show-overflow-tooltip><template #default="{ row }">{{ row.description || '—' }}</template></el-table-column>
         <el-table-column label="供应商" min-width="230">
           <template #default="{ row }">
             <div class="vlist">
-              <span v-for="s in row.suppliers" :key="s.id" class="vtag" :class="{ off: s.status === 'disabled' }"><VendorLogo :code="s.provider?.code ?? ''" :size="16" />{{ s.provider?.name }}</span>
+              <span v-for="s in row.suppliers.slice(0, 3)" :key="s.id" class="vtag" :class="{ off: s.status === 'disabled' }"><VendorLogo :code="s.provider?.code ?? ''" :size="16" />{{ s.provider?.name }}</span>
+              <span v-if="row.suppliers.length > 3" class="vtag more" :title="row.suppliers.slice(3).map((s: any) => s.provider?.name).join('、')">+{{ row.suppliers.length - 3 }}</span>
               <span v-if="!row.suppliers.length" class="faint">—</span>
             </div>
           </template>
         </el-table-column>
         <el-table-column label="模型" width="64" align="right"><template #default="{ row }"><span class="num">{{ row.model_count }}</span></template></el-table-column>
-        <el-table-column label="供应商选择" width="136"><template #default="{ row }"><StatusBadge :text="VENDOR_ROUTING[row.routing_strategy]?.text ?? row.routing_strategy" tone="primary" /></template></el-table-column>
+        <el-table-column label="供应商选择" width="140"><template #default="{ row }"><StatusBadge :text="VENDOR_ROUTING[row.routing_strategy]?.text ?? row.routing_strategy" tone="primary" /></template></el-table-column>
         <el-table-column label="状态" width="80"><template #default="{ row }"><StatusBadge :text="row.status === 'active' ? '启用' : '停用'" :tone="row.status === 'active' ? 'success' : 'info'" /></template></el-table-column>
-        <el-table-column label="" width="150" align="right" fixed="right">
+        <el-table-column label="操作" width="150" align="right" fixed="right" class-name="col-actions">
           <template v-if="isSuper" #default="{ row }">
             <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
             <el-button link :type="row.status === 'active' ? 'danger' : 'primary'" @click="toggle(row)">{{ row.status === 'active' ? '停用' : '启用' }}</el-button>
@@ -185,6 +186,7 @@ async function remove(v: VendorView) { await vendors.remove(v.id); ElMessage.suc
 .vlist { display: flex; flex-wrap: wrap; gap: 4px; }
 .vtag { display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px 1px 2px; border: 1px solid var(--border); border-radius: 999px; font-size: 12px; white-space: nowrap; }
 .vtag.off { opacity: .5; text-decoration: line-through; }
+.vtag.more { padding: 1px 8px; color: var(--text-2); background: #F8FAFC; }
 .sup { padding: 4px 16px 12px 52px; background: #FAFBFC; }
 .sup-head { display: flex; align-items: center; gap: 10px; padding: 8px 0; font-size: 13px; }
 .spacer { flex: 1; }

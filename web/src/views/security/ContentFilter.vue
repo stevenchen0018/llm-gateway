@@ -67,7 +67,7 @@
             </template>
           </el-table-column>
           <el-table-column label="启用" width="70"><template #default="{ row }"><el-switch :model-value="row.enabled" size="small" :disabled="!editable(row)" @change="(v: string | number | boolean) => toggle(row, !!v)" /></template></el-table-column>
-          <el-table-column label="" width="110" align="right" fixed="right">
+          <el-table-column label="操作" width="110" align="right" fixed="right" class-name="col-actions">
             <template #default="{ row }">
               <template v-if="editable(row)">
                 <el-button link type="primary" @click="openEdit(row)">编辑</el-button>

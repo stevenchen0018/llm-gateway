@@ -21,7 +21,7 @@
         <el-table-column label="平均 RT" width="100" align="right"><template #default="{ row }"><span class="num">{{ stat(row.id) ? fmtDuration(stat(row.id)!.avg_latency_ms) : '—' }}</span></template></el-table-column>
         <el-table-column label="成本" width="110" align="right"><template #default="{ row }"><span class="num">{{ stat(row.id) ? fmtMoney(stat(row.id)!.cost) : '—' }}</span></template></el-table-column>
         <el-table-column label="状态" width="90"><template #default="{ row }"><StatusBadge :text="row.status === 'active' ? '可用' : '已下架'" :tone="row.status === 'active' ? 'success' : 'info'" /></template></el-table-column>
-        <el-table-column label="" width="200" align="right" fixed="right">
+        <el-table-column label="操作" width="200" align="right" fixed="right" class-name="col-actions">
           <template #default="{ row }">
             <el-button link type="primary" @click="$router.push({ path: playgroundPath(row.category), query: { model: row.id } })">体验</el-button>
             <el-button link type="primary" @click="guide(row)">接入说明</el-button>

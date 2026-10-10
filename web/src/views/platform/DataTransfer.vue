@@ -49,7 +49,7 @@
         </el-table-column>
         <el-table-column label="状态" width="100"><template #default="{ row }"><StatusBadge :text="STATUS[row.status as TransferJob['status']].text" :tone="STATUS[row.status as TransferJob['status']].tone" /></template></el-table-column>
         <el-table-column label="操作人" width="130" prop="operator" />
-        <el-table-column label="" width="90" align="right"><template #default="{ row }"><el-button v-if="row.errors?.length" link type="primary" @click="errJob = row">错误明细</el-button></template></el-table-column>
+        <el-table-column label="操作" width="110" align="right" class-name="col-actions"><template #default="{ row }"><el-button v-if="row.errors?.length" link type="primary" @click="errJob = row">错误明细</el-button></template></el-table-column>
       </el-table>
       <TablePager v-model:page="pg.page.value" v-model:page-size="pg.pageSize.value" :total="pg.total.value" />
     </Panel>

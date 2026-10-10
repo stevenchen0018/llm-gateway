@@ -68,7 +68,7 @@
         </div>
         <el-table :data="lp.rows.value" v-loading="loading" empty-text="暂无调度策略">
           <el-table-column label="策略名称" min-width="150">
-            <template #default="{ row }"><div class="cell-title">{{ row.name || row.alias }}</div><div class="cell-sub" :title="row.remark">{{ row.remark || '—' }}</div></template>
+            <template #default="{ row }"><div class="cell-title">{{ row.name || row.alias }}</div><div class="cell-sub clamp2" :title="row.remark">{{ row.remark || '—' }}</div></template>
           </el-table-column>
           <el-table-column label="应用" width="120" show-overflow-tooltip><template #default="{ row }">{{ row.app_id ? appName(row.app_id) : '—' }}</template></el-table-column>
           <el-table-column label="API Key" width="130" show-overflow-tooltip><template #default="{ row }"><StatusBadge v-if="!row.api_key_id" text="全部 Key" tone="primary" /><span v-else>{{ keyName(row.api_key_id) }}</span></template></el-table-column>
@@ -78,16 +78,16 @@
               <div class="cell-sub mono" style="margin-top: 3px">{{ row.source_type === 'vendor' && row.source_vendor_id ? vendorName(row.source_vendor_id) + ' / ' : '' }}{{ row.alias }}</div>
             </template>
           </el-table-column>
-          <el-table-column label="目标（供应商 / 模型，按顺序尝试）" min-width="230">
+          <el-table-column label="目标（供应商 / 模型，按顺序尝试）" min-width="280">
             <template #default="{ row }">
               <div class="targets">
-                <span v-for="(r, i) in row.routes" :key="r.id" class="tgt" :class="{ off: !r.enabled || supplyOff(r.candidate_model_id) }" :title="supplyOff(r.candidate_model_id) ? '该供应商已对此厂商停用，路由时跳过' : ''"><b>{{ i + 1 }}</b><VendorLogo :code="providerCode(r.candidate_model_id)" :size="16" />{{ supplierOf(r.candidate_model_id) }}<span class="muted">/</span>{{ modelName(r.candidate_model_id) }}</span>
+                <span v-for="(r, i) in row.routes" :key="r.id" class="tgt" :class="{ off: !r.enabled || supplyOff(r.candidate_model_id) }" :title="supplyOff(r.candidate_model_id) ? '该供应商已对此厂商停用，路由时跳过' : ''"><b>{{ i + 1 }}</b><VendorLogo :code="providerCode(r.candidate_model_id)" :size="16" /><span class="tgt-text" :title="`${supplierOf(r.candidate_model_id)} / ${modelName(r.candidate_model_id)}`">{{ supplierOf(r.candidate_model_id) }}<span class="muted"> / </span><span class="mono">{{ modelName(r.candidate_model_id) }}</span></span></span>
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="策略" width="96"><template #default="{ row }"><StatusBadge :text="STRATEGY_TEXT[row.strategy as Strategy]" tone="accent" /></template></el-table-column>
+          <el-table-column label="策略" width="124"><template #default="{ row }"><StatusBadge :text="STRATEGY_TEXT[row.strategy as Strategy]" tone="accent" /></template></el-table-column>
           <el-table-column label="状态" width="80"><template #default="{ row }"><StatusBadge :text="row.enabled ? '启用' : '停用'" :tone="row.enabled ? 'success' : 'info'" /></template></el-table-column>
-          <el-table-column label="" width="215" align="right" fixed="right">
+          <el-table-column label="操作" width="180" align="right" fixed="right" class-name="col-actions">
             <template #default="{ row }">
               <el-button link type="primary" @click="simulateFor(row)">模拟</el-button>
               <template v-if="row.api_key_id ? canWrite : isSuper">
@@ -423,7 +423,10 @@ onMounted(async () => {
 .pad { padding: 12px 16px; }
 .spacer { flex: 1; }
 .targets { display: flex; flex-direction: column; gap: 4px; }
-.tgt { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.tgt { display: flex; align-items: center; gap: 6px; font-size: 12.5px; min-width: 0; white-space: nowrap; }
+.tgt > b, .tgt > .logo { flex: none; }
+.tgt-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .tgt b { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 10px; font-weight: 600; }
 .tgt.off { opacity: .45; text-decoration: line-through; }
 .src { display: flex; gap: 8px; width: 100%; }

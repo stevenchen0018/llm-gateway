@@ -29,7 +29,7 @@
         <el-table-column label="模型数" width="72" align="right"><template #default="{ row }"><span class="num">{{ modelCount(row.id) }}</span></template></el-table-column>
         <el-table-column label="商务联系人" width="150" show-overflow-tooltip><template #default="{ row }"><span :class="{ faint: !row.contact }">{{ row.contact || '—' }}</span></template></el-table-column>
         <el-table-column label="状态" width="90"><template #default="{ row }"><StatusBadge :text="row.status === 'active' ? '启用' : '停用'" :tone="row.status === 'active' ? 'success' : 'info'" /></template></el-table-column>
-        <el-table-column label="" width="130" align="right" fixed="right">
+        <el-table-column label="操作" width="130" align="right" fixed="right" class-name="col-actions">
           <template v-if="isSuper" #default="{ row }">
             <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
             <el-button link :type="row.status === 'active' ? 'danger' : 'primary'" @click="toggle(row, row.status !== 'active')">{{ row.status === 'active' ? '停用' : '启用' }}</el-button>

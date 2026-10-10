@@ -53,6 +53,15 @@ make dev-up                                          # 启动本地 Postgres + R
 make run                                             # 启动网关 (:8080)，启动时自动执行数据库迁移
 ```
 
+Docker 部署（镜像内含控制台）：
+
+```bash
+cd deployments/docker && cp .env.example .env && docker compose up -d --build   # 单机
+cd deployments/cluster && cp .env.example .env && docker compose up -d --build  # 集群：Nginx + 1 master + N slave
+```
+
+单容器、Compose 单机、单机多节点 / 多主机集群、滚动升级与排障详见 [docs/deployment.md](docs/deployment.md)。
+
 不接入任何真实厂商也能跑通全链路：把 Provider 的 `base_url` 设为 `mock://xxx`
 即可路由到内置的 `internal/adapter/provider/mock` 适配器（无网络调用，用于本地开发/
 演示/测试）。`scripts/smoke_test.sh` 用这种方式跑通了开号 Key、配置路由、调用网关、
@@ -255,6 +264,7 @@ make loadtest-ramp    # 阶梯加压探测容量
 
 - 迁移文件（`migrations/`）已嵌入二进制。默认 `postgres.auto_migrate: true`：网关（以及 `cmd/seed`）启动时自动把空库或旧库升级到当前版本，
   多实例并发启动由 Postgres advisory lock 串行化，不会再出现 `relation "xxx" does not exist`。
+  集群部署时只有 master 节点（`cluster.node_type`）执行迁移，slave 等待 schema 就绪后再对外服务。
 - 关闭自动迁移时，启动会检查 schema 版本，**不匹配则直接拒绝启动**并给出修复提示，而不是带病运行。
 - 手动管理：`make migrate-up` / `migrate-down` / `migrate-version`；脏状态用 `go run ./cmd/migrate force <版本>` 清除；可用 `-dir` 指定外部 SQL 目录。
 - `GET /healthz` 仅表示进程存活；`GET /readyz` 检查 PostgreSQL、Redis 与 schema 版本，未就绪返回 503（控制台顶部状态徽标使用它）。

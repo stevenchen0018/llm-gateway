@@ -53,7 +53,7 @@
         </el-table-column>
         <el-table-column label="状态" width="96"><template #default="{ row }"><StatusBadge :text="statusLabel(row)" :tone="statusToneOf(row)" /></template></el-table-column>
         <el-table-column label="申请时间" width="160"><template #default="{ row }"><span class="num muted">{{ fmtTime(row.created_at) }}</span></template></el-table-column>
-        <el-table-column label="" width="160" align="right" fixed="right">
+        <el-table-column label="操作" width="140" align="right" fixed="right" class-name="col-actions">
           <template #default="{ row }">
             <el-button v-if="canManage(row) && row.status === 'pending'" link type="primary" @click="approve(row)">审批</el-button>
             <el-button v-if="canManage(row) && row.status === 'active'" link type="primary" @click="openQuota(row)">配额</el-button>

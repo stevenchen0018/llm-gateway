@@ -13,7 +13,7 @@
         <el-table-column label="负责人" width="120" prop="owner" />
         <el-table-column label="拉黑原因" min-width="260"><template #default="{ row }"><span :title="row.blacklist_reason">{{ row.blacklist_reason || '—' }}</span></template></el-table-column>
         <el-table-column label="拉黑时间" width="170"><template #default="{ row }"><span class="num muted">{{ fmtTime(row.blacklisted_at) }}</span></template></el-table-column>
-        <el-table-column label="" width="130" align="right" fixed="right">
+        <el-table-column label="操作" width="130" align="right" fixed="right" class-name="col-actions">
           <template v-if="canWrite" #default="{ row }"><el-popconfirm title="确认移出黑名单？恢复后 Key 立即可用（原本未审批的将回到待审批）。" width="260" @confirm="restore(row)"><template #reference><el-button link type="primary">移出黑名单</el-button></template></el-popconfirm></template>
         </el-table-column>
       </el-table>

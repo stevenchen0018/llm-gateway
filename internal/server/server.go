@@ -16,6 +16,7 @@ import (
 	"gorm.io/gorm"
 
 	cbredis "github.com/stevenchen/llm-gateway/internal/adapter/circuitbreaker/redis"
+	clusterredis "github.com/stevenchen/llm-gateway/internal/adapter/cluster/redis"
 	"github.com/stevenchen/llm-gateway/internal/adapter/notifier"
 	"github.com/stevenchen/llm-gateway/internal/adapter/provider/mock"
 	"github.com/stevenchen/llm-gateway/internal/adapter/provider/openaicompat"
@@ -41,6 +42,7 @@ type App struct {
 	Cost        *service.CostService
 	Identity    *service.IdentityService
 	Log         *zap.Logger
+	Tasks       service.TaskGate
 }
 
 // StartDigestScheduler runs the weekly usage/cost push (成本感知) until ctx is
@@ -57,6 +59,10 @@ func (a *App) StartDigestScheduler(ctx context.Context, cfg config.DigestConfig)
 			case <-ctx.Done():
 				return
 			case now := <-t.C:
+				// one node per hourly tick; RunDigestIfDue itself skips weeks already sent
+				if a.Tasks != nil && !a.Tasks.TryAcquire(ctx, "weekly-digest", 50*time.Minute) {
+					continue
+				}
 				sent, err := a.Cost.RunDigestIfDue(ctx, now, cfg.Weekday, cfg.Hour)
 				if err != nil {
 					a.Log.Error("weekly digest failed", zap.Error(err))
@@ -116,6 +122,8 @@ func Build(cfg *config.Config, db *gorm.DB, rdb *redis.Client, log *zap.Logger) 
 	// --- redis-backed adapters ---------------------------------------------
 	limiter := rlredis.NewLimiter(rdb)
 	healthStore := cbredis.NewHealthStore(rdb)
+	nodeName := cfg.Cluster.Name()
+	taskLock := clusterredis.NewTaskLock(rdb, nodeName)
 
 	// --- provider adapters + notifier --------------------------------------
 	clientRegistry := service.NewProviderClientRegistry(mock.NewClient(), openaicompat.NewClient())
@@ -140,7 +148,7 @@ func Build(cfg *config.Config, db *gorm.DB, rdb *redis.Client, log *zap.Logger) 
 	settingsSvc := service.NewSettingsService(settingsRepo, 5*time.Second)
 	filterSvc := service.NewContentFilterService(filterRepo, settingsSvc, alertSvc, log)
 	requestLogSvc := service.NewRequestLogService(requestLogRepo)
-	requestLogWorker := service.NewRequestLogWorker(cfg.Async.RequestLogBufferSize, requestLogRepo, settingsSvc, log)
+	requestLogWorker := service.NewRequestLogWorker(cfg.Async.RequestLogBufferSize, requestLogRepo, settingsSvc, log).WithTaskGate(taskLock)
 
 	usageWorker := service.NewAsyncUsageWorker(cfg.Async.UsageBufferSize, usageRepo, metricsRepo, budgetSvc, log)
 
@@ -156,9 +164,9 @@ func Build(cfg *config.Config, db *gorm.DB, rdb *redis.Client, log *zap.Logger) 
 	if err := engine.SetTrustedProxies(cfg.Server.TrustedProxies); err != nil {
 		log.Fatal("invalid server.trusted_proxies", zap.Error(err))
 	}
-	engine.Use(middleware.Recovery(log), middleware.RequestLog(log), middleware.CORS())
+	engine.Use(middleware.Recovery(log), middleware.RequestLog(log), middleware.CORS(), nodeHeader(nodeName))
 
-	engine.GET("/readyz", readiness(db, rdb))
+	engine.GET("/readyz", readiness(db, rdb, cfg.Cluster.NodeType, nodeName))
 
 	registerRoutes(engine, cfg, &services{
 		gateway: gatewaySvc, market: marketSvc, routing: routingSvc, keys: keySvc, budgets: budgetSvc,
@@ -171,9 +179,12 @@ func Build(cfg *config.Config, db *gorm.DB, rdb *redis.Client, log *zap.Logger) 
 		}),
 		jobs: transfer.NewJobs(db),
 	})
+	if cfg.Server.WebRoot != "" {
+		serveConsole(engine, cfg.Server.WebRoot, log)
+	}
 
 	return &App{Engine: engine, UsageWorker: usageWorker, RequestLogs: requestLogWorker, Filter: filterSvc,
-		Cost: costSvc, Identity: identitySvc, Log: log}
+		Cost: costSvc, Identity: identitySvc, Log: log, Tasks: taskLock}
 }
 
 func registerRoutes(r *gin.Engine, cfg *config.Config, sv *services) {
@@ -348,7 +359,7 @@ func registerRoutes(r *gin.Engine, cfg *config.Config, sv *services) {
 // readiness reports whether the gateway can actually serve traffic:
 // PostgreSQL reachable, Redis reachable, and the schema at the version this
 // binary requires. /healthz stays a pure liveness probe.
-func readiness(db *gorm.DB, rdb *redis.Client) gin.HandlerFunc {
+func readiness(db *gorm.DB, rdb *redis.Client, nodeType, nodeName string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
 		defer cancel()
@@ -376,6 +387,6 @@ func readiness(db *gorm.DB, rdb *redis.Client) gin.HandlerFunc {
 		if !ok {
 			status, code = "not_ready", http.StatusServiceUnavailable
 		}
-		c.JSON(code, gin.H{"status": status, "checks": checks})
+		c.JSON(code, gin.H{"status": status, "node": gin.H{"name": nodeName, "type": nodeType}, "checks": checks})
 	}
 }
