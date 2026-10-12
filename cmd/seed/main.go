@@ -27,7 +27,7 @@ var seedSQL string
 // locks the operator out. Departments are deleted (not truncated): TRUNCATE
 // ... CASCADE would also empty admin_users, which references departments.
 var resetSQL = []string{
-	`TRUNCATE data_transfers, request_logs, content_filter_rules, vendor_suppliers, vendors, metrics_minute, usage_records, alert_events, audit_logs, my_models, announcements,
+	`TRUNCATE provider_test_results, provider_test_runs, data_transfers, request_logs, content_filter_rules, vendor_suppliers, vendors, metrics_minute, usage_records, alert_events, audit_logs, my_models, announcements,
 		model_routes, budgets, api_keys, models, applications, providers RESTART IDENTITY CASCADE`,
 	`DELETE FROM admin_users WHERE role <> 'super_admin'`,
 	`DELETE FROM departments`,

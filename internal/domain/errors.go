@@ -1,6 +1,9 @@
 package domain
 
-import "errors"
+import (
+	"errors"
+	"strconv"
+)
 
 // Sentinel errors returned by service-layer code. HTTP handlers
 // (internal/api/*) map these to the appropriate status code and
@@ -20,3 +23,20 @@ var (
 	// ErrIPNotAllowed means the caller's address is not on the key's whitelist.
 	ErrIPNotAllowed = errors.New("source ip not allowed for this api key")
 )
+
+// UpstreamError is a failed call to a supplier's API. It matches ErrUpstream
+// with errors.Is, and keeps the HTTP status (0 = no response: network error
+// or timeout) so availability tests can classify the failure.
+type UpstreamError struct {
+	Status  int
+	Message string
+}
+
+func (e *UpstreamError) Error() string {
+	if e.Status == 0 {
+		return ErrUpstream.Error() + ": " + e.Message
+	}
+	return ErrUpstream.Error() + ": status " + strconv.Itoa(e.Status) + ": " + e.Message
+}
+
+func (e *UpstreamError) Unwrap() error { return ErrUpstream }

@@ -28,6 +28,9 @@ func NewClient() *Client { return &Client{} }
 const FailKeyword = "__force_fail__"
 
 func (c *Client) ChatCompletion(ctx context.Context, target domain.CallTarget, req domain.ChatRequest) (domain.ChatResponse, error) {
+	if strings.Contains(target.Provider.BaseURL, "unreachable") {
+		return domain.ChatResponse{}, &domain.UpstreamError{Message: "dial tcp: connect: connection refused (mock)"}
+	}
 	var lastUserContent string
 	promptTokens := 0
 	for _, m := range req.Messages {
@@ -62,6 +65,9 @@ func (c *Client) ChatCompletion(ctx context.Context, target domain.CallTarget, r
 }
 
 func (c *Client) Embeddings(ctx context.Context, target domain.CallTarget, req domain.EmbeddingsRequest) (domain.EmbeddingsResponse, error) {
+	if strings.Contains(target.Provider.BaseURL, "unreachable") {
+		return domain.EmbeddingsResponse{}, &domain.UpstreamError{Message: "dial tcp: connect: connection refused (mock)"}
+	}
 	data := make([]domain.EmbeddingData, len(req.Input))
 	promptTokens := 0
 	for i, text := range req.Input {
@@ -74,4 +80,14 @@ func (c *Client) Embeddings(ctx context.Context, target domain.CallTarget, req d
 		Data:  data,
 		Usage: domain.Usage{PromptTokens: promptTokens, TotalTokens: promptTokens},
 	}, nil
+}
+
+// ListModels implements domain.ProviderProber. A base URL containing
+// "unreachable" simulates a supplier that cannot be reached, so availability
+// tests can be demonstrated offline.
+func (c *Client) ListModels(ctx context.Context, provider domain.Provider) ([]string, error) {
+	if strings.Contains(provider.BaseURL, "unreachable") {
+		return nil, &domain.UpstreamError{Message: "dial tcp: connect: connection refused (mock)"}
+	}
+	return []string{"mock-model"}, nil
 }

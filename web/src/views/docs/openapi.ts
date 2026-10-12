@@ -27,13 +27,30 @@ export interface Resp { $ref?: string; description: string; headers?: Record<str
 export interface Operation {
   tags?: string[]
   operationId: string
+  servers?: { url: string }[]
+  parameters?: { name: string; in: string; required?: boolean; description?: string; example?: string }[]
+  'x-protocol'?: Protocol
   summary: string
   description?: string
   requestBody?: { content: Record<string, { schema: Schema; example?: unknown }> }
   responses: Record<string, Resp>
 }
 
+export type Protocol = 'openai' | 'anthropic' | 'gemini'
 export interface Endpoint { method: string; path: string; op: Operation }
+
+export const protocolOf = (ep: Endpoint): Protocol => ep.op['x-protocol'] ?? 'openai'
+
+// fill {param} from the parameter examples (Gemini puts the model in the path)
+export const concretePath = (ep: Endpoint, values: Record<string, string> = {}) =>
+  ep.path.replace(/\{(\w+)\}/g, (_, n) => values[n] ?? ep.op.parameters?.find((p) => p.name === n)?.example ?? n)
+
+// auth headers each protocol's SDK sends
+export function authHeaders(proto: Protocol, key: string): Record<string, string> {
+  if (proto === 'anthropic') return { 'x-api-key': key, 'anthropic-version': '2023-06-01' }
+  if (proto === 'gemini') return { 'x-goog-api-key': key }
+  return { Authorization: `Bearer ${key}` }
+}
 
 export interface Row { name: string; type: string; required: boolean; description: string }
 
@@ -102,10 +119,46 @@ function pyValue(v: unknown, indent = 4): string {
   return JSON.stringify(v)
 }
 
+// root is the gateway origin; Anthropic and Gemini SDKs take it as base URL
+function protocolSdkSample(lang: Lang, proto: Protocol, root: string, ep: Endpoint, body: Record<string, unknown>, key: string): string | null {
+  if (proto === 'anthropic' && ep.op.operationId === 'createMessage') {
+    if (lang === 'Python') return `import anthropic\n\n# base_url 为网关根地址（SDK 自动拼接 /v1/messages）\nclient = anthropic.Anthropic(base_url="${root}", api_key="${key}")\n\nmsg = client.messages.create(\n${Object.entries(body).map(([k, v]) => `    ${k}=${pyValue(v)},`).join('\n')}\n)\nprint(msg.content[0].text)`
+    if (lang === 'Node.js') return `import Anthropic from "@anthropic-ai/sdk";\n\nconst client = new Anthropic({ baseURL: "${root}", apiKey: "${key}" });\n\nconst msg = await client.messages.create(${JSON.stringify(body, null, 2)});\nconsole.log(msg.content[0].text);\n\n// Claude Code：export ANTHROPIC_BASE_URL=${root} ANTHROPIC_AUTH_TOKEN=${key}`
+  }
+  if (proto === 'gemini' && ep.op.operationId !== 'geminiEmbedContent') {
+    const model = ep.op.parameters?.find((p) => p.name === 'model')?.example ?? 'gemini-2.5-flash'
+    const text = ((body.contents as { parts: { text: string }[] }[] | undefined)?.[0]?.parts?.[0]?.text) ?? '你好'
+    const stream = ep.op.operationId === 'geminiStreamGenerateContent'
+    if (lang === 'Python') return `from google import genai\nfrom google.genai import types\n\n# base_url 为网关根地址（SDK 自动拼接 /v1beta/models/...）\nclient = genai.Client(api_key="${key}", http_options=types.HttpOptions(base_url="${root}"))\n\n` +
+      (stream ? `for chunk in client.models.generate_content_stream(model="${model}", contents="${text}"):\n    print(chunk.text, end="")` : `resp = client.models.generate_content(model="${model}", contents="${text}")\nprint(resp.text)`)
+    if (lang === 'Node.js') return `import { GoogleGenAI } from "@google/genai";\n\nconst ai = new GoogleGenAI({ apiKey: "${key}", httpOptions: { baseUrl: "${root}" } });\n\n` +
+      (stream ? `const stream = await ai.models.generateContentStream({ model: "${model}", contents: "${text}" });\nfor await (const chunk of stream) process.stdout.write(chunk.text ?? "");` : `const resp = await ai.models.generateContent({ model: "${model}", contents: "${text}" });\nconsole.log(resp.text);`)
+  }
+  return null
+}
+
 export function sample(lang: Lang, base: string, ep: Endpoint, body: unknown, key = 'sk-your-key'): string {
-  const url = base + ep.path
+  const proto = protocolOf(ep)
+  const opBase = ep.op.servers?.[0]?.url ?? base
+  const url = opBase + concretePath(ep) + (ep.op.operationId === 'geminiStreamGenerateContent' ? '?alt=sse' : '')
   const json = body === undefined ? '' : JSON.stringify(body, null, 2)
   const call = openaiCall[ep.op.operationId]
+  const headers = authHeaders(proto, key)
+  if (proto !== 'openai') {
+    const root = new URL(opBase).origin
+    const sdk = protocolSdkSample(lang, proto, root, ep, (body ?? {}) as Record<string, unknown>, key)
+    if (sdk) return sdk
+    const hdr = Object.entries(headers)
+    switch (lang) {
+      case 'cURL':
+        return `curl ${url} \\\n${hdr.map(([k, v]) => `  -H "${k}: ${v}" \\`).join('\n')}\n  -H "Content-Type: application/json" \\\n  -d '${json}'`
+      case 'Python':
+        return `import requests\n\nresp = requests.post(\n    "${url}",\n    headers=${JSON.stringify(headers)},\n    json=${pyValue(body)},\n)\nprint(resp.status_code, resp.json())`
+      case 'Node.js':
+        return `const resp = await fetch("${url}", {\n  method: "POST",\n  headers: ${JSON.stringify({ ...headers, 'Content-Type': 'application/json' })},\n  body: JSON.stringify(${json}),\n});\nconsole.log(resp.status, await resp.json());`
+    }
+  }
+  const setHeaders = Object.entries(headers)
   switch (lang) {
     case 'cURL':
       return ep.method === 'GET'
@@ -118,8 +171,8 @@ export function sample(lang: Lang, base: string, ep: Endpoint, body: unknown, ke
       if (!call) return `import OpenAI from "openai";\n\nconst client = new OpenAI({ baseURL: "${base}", apiKey: "${key}" });\nconst models = await client.models.list();\nconsole.log(models.data.map((m) => m.id));`
       return `import OpenAI from "openai";\n\nconst client = new OpenAI({ baseURL: "${base}", apiKey: "${key}" });\n\nconst resp = await ${call.js}(${json.replace(/\n/g, '\n')});\nconsole.log(resp);`
     case 'Go':
-      return `package main\n\nimport (\n\t"fmt"\n\t"io"\n\t"net/http"\n\t"strings"\n)\n\nfunc main() {\n\tbody := strings.NewReader(\`${json}\`)\n\treq, _ := http.NewRequest("${ep.method}", "${url}", ${ep.method === 'GET' ? 'nil' : 'body'})\n\treq.Header.Set("Authorization", "Bearer ${key}")\n\treq.Header.Set("Content-Type", "application/json")\n\n\tresp, err := http.DefaultClient.Do(req)\n\tif err != nil {\n\t\tpanic(err)\n\t}\n\tdefer resp.Body.Close()\n\tout, _ := io.ReadAll(resp.Body)\n\tfmt.Println(resp.StatusCode, resp.Header.Get("X-Request-Id"), string(out))\n}`
+      return `package main\n\nimport (\n\t"fmt"\n\t"io"\n\t"net/http"\n\t"strings"\n)\n\nfunc main() {\n\tbody := strings.NewReader(\`${json}\`)\n\treq, _ := http.NewRequest("${ep.method}", "${url}", ${ep.method === 'GET' ? 'nil' : 'body'})\n${setHeaders.map(([k, v]) => `\treq.Header.Set("${k}", "${v}")\n`).join('')}\treq.Header.Set("Content-Type", "application/json")\n\n\tresp, err := http.DefaultClient.Do(req)\n\tif err != nil {\n\t\tpanic(err)\n\t}\n\tdefer resp.Body.Close()\n\tout, _ := io.ReadAll(resp.Body)\n\tfmt.Println(resp.StatusCode, resp.Header.Get("X-Request-Id"), string(out))\n}`
     case 'Java':
-      return `import java.net.URI;\nimport java.net.http.*;\n\npublic class Demo {\n  public static void main(String[] args) throws Exception {\n    String body = """\n${json}\n        """;\n    HttpRequest req = HttpRequest.newBuilder(URI.create("${url}"))\n        .header("Authorization", "Bearer ${key}")\n        .header("Content-Type", "application/json")\n        .method("${ep.method}", ${ep.method === 'GET' ? 'HttpRequest.BodyPublishers.noBody()' : 'HttpRequest.BodyPublishers.ofString(body)'})\n        .build();\n    HttpResponse<String> resp = HttpClient.newHttpClient().send(req, HttpResponse.BodyHandlers.ofString());\n    System.out.println(resp.statusCode() + " " + resp.body());\n  }\n}`
+      return `import java.net.URI;\nimport java.net.http.*;\n\npublic class Demo {\n  public static void main(String[] args) throws Exception {\n    String body = """\n${json}\n        """;\n    HttpRequest req = HttpRequest.newBuilder(URI.create("${url}"))\n${setHeaders.map(([k, v]) => `        .header("${k}", "${v}")\n`).join('')}        .header("Content-Type", "application/json")\n        .method("${ep.method}", ${ep.method === 'GET' ? 'HttpRequest.BodyPublishers.noBody()' : 'HttpRequest.BodyPublishers.ofString(body)'})\n        .build();\n    HttpResponse<String> resp = HttpClient.newHttpClient().send(req, HttpResponse.BodyHandlers.ofString());\n    System.out.println(resp.statusCode() + " " + resp.body());\n  }\n}`
   }
 }

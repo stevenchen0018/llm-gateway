@@ -37,6 +37,16 @@ func validSupplierType(t string) error {
 	return fmt.Errorf("%w: supplier_type must be official, cloud, reseller or self_hosted", domain.ErrInvalidArgument)
 }
 
+func validProtocol(p *domain.Provider) error {
+	if p.Protocol == "" {
+		p.Protocol = domain.ProtocolOpenAI
+	}
+	if !domain.ValidProtocol(p.Protocol) {
+		return fmt.Errorf("%w: protocol must be openai, anthropic or gemini", domain.ErrInvalidArgument)
+	}
+	return nil
+}
+
 // linkVendor validates the model's vendor and records that its supplier
 // supplies that vendor.
 func (s *ModelMarketService) linkVendor(ctx context.Context, m *domain.Model) error {
@@ -60,6 +70,9 @@ func (s *ModelMarketService) CreateProvider(ctx context.Context, p *domain.Provi
 	if err := validSupplierType(p.SupplierType); err != nil {
 		return err
 	}
+	if err := validProtocol(p); err != nil {
+		return err
+	}
 	if p.Status == "" {
 		p.Status = domain.ProviderStatusActive
 	}
@@ -68,6 +81,9 @@ func (s *ModelMarketService) CreateProvider(ctx context.Context, p *domain.Provi
 
 func (s *ModelMarketService) UpdateProvider(ctx context.Context, p *domain.Provider) error {
 	if err := validSupplierType(p.SupplierType); err != nil {
+		return err
+	}
+	if err := validProtocol(p); err != nil {
 		return err
 	}
 	return s.providers.Update(ctx, p)

@@ -92,7 +92,7 @@ const names = ref<Record<string, Record<string, string>>>({ model: {}, key: {}, 
 
 const levelText = { info: '提示', warning: '警告', critical: '严重' } as const
 const levelTone = { info: 'info', warning: 'warning', critical: 'danger' } as const
-const typeText = { quota: '限流', budget: '预算', failover: '容灾', report: '周报', security: '安全' } as const
+const typeText = { quota: '限流', budget: '预算', failover: '容灾', report: '周报', security: '安全', availability: '可用性' } as const
 const groupLabel = computed(() => ({ model: '模型', key: 'Key', provider: '供应商' })[groupBy.value])
 const nameOf = (k: string) => names.value[groupBy.value][k] || `#${k}`
 

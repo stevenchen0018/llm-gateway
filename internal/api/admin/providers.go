@@ -27,7 +27,7 @@ func (h *ProviderHandler) Create(c *gin.Context) {
 		return
 	}
 
-	p := &domain.Provider{Code: req.Code, Name: req.Name, BaseURL: req.BaseURL, AuthType: req.AuthType, AuthValue: req.AuthValue,
+	p := &domain.Provider{Code: req.Code, Name: req.Name, BaseURL: req.BaseURL, Protocol: req.Protocol, AuthType: req.AuthType, AuthValue: req.AuthValue,
 		DiscountRate: parseDiscount(req.DiscountRate), Description: req.Description, SupplierType: req.SupplierType, Contact: req.Contact}
 	if err := h.market.CreateProvider(c.Request.Context(), p); err != nil {
 		writeAdminError(c, err)
@@ -58,6 +58,9 @@ func (h *ProviderHandler) Update(c *gin.Context) {
 	}
 	if req.BaseURL != "" {
 		p.BaseURL = req.BaseURL
+	}
+	if req.Protocol != "" {
+		p.Protocol = req.Protocol
 	}
 	if req.AuthType != nil {
 		p.AuthType = *req.AuthType

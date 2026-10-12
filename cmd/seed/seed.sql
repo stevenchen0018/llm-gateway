@@ -582,3 +582,89 @@ FROM api_keys k JOIN (VALUES
  ('刘洋-编码','apply','ecom_admin','personal coding key applied for 刘洋', interval '0'),
  ('刘洋-编码','approve','admin','approved, waiting for the holder to claim the secret', interval '30 minutes')
 ) AS v(kname, action, op, detail, after) ON v.kname = k.name;
+-- @@
+-- 供应商协议：Anthropic 官方走 Messages API，Google 走 Gemini API（演示数据均为 mock:// 地址）
+UPDATE providers SET protocol = 'anthropic' WHERE code = 'anthropic';
+-- @@
+UPDATE providers SET protocol = 'gemini' WHERE code = 'google';
+-- @@
+-- 供应商可用性测试：近 7 天每 6 小时一次定时巡检。OpenRouter 偶发限流/超时，华为云偶发 5xx，
+-- 百川最近两轮凭证失效（鉴权失败，模型调用被跳过）
+WITH slots AS (
+  SELECT p.id AS pid, p.code, s AS started
+  FROM providers p,
+       generate_series(date_trunc('hour', now()) - interval '7 days' + interval '3 hours', now() - interval '1 hour', interval '6 hours') s
+  WHERE p.status = 'active'
+), runs AS (
+  INSERT INTO provider_test_runs (provider_id, trigger, operator, protocol, status, started_at, finished_at)
+  SELECT pid, 'scheduled', '定时巡检', 'mock', 'running', started, started + interval '25 seconds' FROM slots
+  RETURNING id, provider_id, started_at
+), rc AS (
+  SELECT r.id, r.provider_id, r.started_at, p.code,
+         (p.code = 'baichuan' AND r.started_at > now() - interval '13 hours') AS auth_broken
+  FROM runs r JOIN providers p ON p.id = r.provider_id
+)
+INSERT INTO provider_test_results (run_id, provider_id, model_id, model_key, check_type, round, status, latency_ms, http_status,
+                                   prompt_tokens, completion_tokens, error_type, error_message, response_preview, created_at)
+SELECT rc.id, rc.provider_id, NULL, '', 'probe', 1,
+       CASE WHEN rc.auth_broken THEN 'failed' ELSE 'passed' END,
+       (80 + random() * 160)::int, CASE WHEN rc.auth_broken THEN 401 ELSE 200 END, 0, 0,
+       CASE WHEN rc.auth_broken THEN 'auth' ELSE '' END,
+       CASE WHEN rc.auth_broken THEN 'invalid_api_key: Incorrect API key provided' ELSE '' END,
+       CASE WHEN rc.auth_broken THEN '' ELSE '连通正常，鉴权有效' END,
+       rc.started_at
+FROM rc
+UNION ALL
+SELECT rc.id, rc.provider_id, m.id, m.model_key,
+       CASE WHEN m.type = 'embedding' THEN 'embedding' ELSE 'chat' END, 1,
+       CASE WHEN rc.auth_broken THEN 'skipped' WHEN x.fail THEN 'failed' ELSE 'passed' END,
+       CASE WHEN rc.auth_broken THEN 0
+            WHEN x.fail AND x.etype = 'timeout' THEN 30000
+            ELSE (x.base * (0.6 + random() * 0.8) * CASE WHEN random() < 0.05 THEN 2.5 ELSE 1 END)::int END,
+       CASE WHEN rc.auth_broken THEN 0 WHEN NOT x.fail THEN 200 WHEN x.etype = 'rate_limited' THEN 429 WHEN x.etype = 'upstream_5xx' THEN 503 ELSE 0 END,
+       CASE WHEN rc.auth_broken OR x.fail THEN 0 ELSE 9 END,
+       CASE WHEN rc.auth_broken OR x.fail OR m.type = 'embedding' THEN 0 ELSE 2 END,
+       CASE WHEN rc.auth_broken THEN '' WHEN x.fail THEN x.etype ELSE '' END,
+       CASE WHEN rc.auth_broken THEN '连通性或鉴权检查未通过，跳过模型调用'
+            WHEN NOT x.fail THEN ''
+            WHEN x.etype = 'rate_limited' THEN 'Rate limit reached for requests, please retry later'
+            WHEN x.etype = 'upstream_5xx' THEN 'Service temporarily unavailable'
+            ELSE 'timeout: context deadline exceeded (Client.Timeout exceeded while awaiting headers)' END,
+       CASE WHEN rc.auth_broken OR x.fail THEN '' WHEN m.type = 'embedding' THEN '向量维度 1024' ELSE 'OK' END,
+       rc.started_at + interval '2 seconds'
+FROM rc
+JOIN models m ON m.provider_id = rc.provider_id AND m.status = 'active'
+             AND m.category NOT IN ('image_gen', 'video_gen', 'speech_asr', 'speech_tts', 'rerank')
+CROSS JOIN LATERAL (
+  SELECT r < rate AS fail,
+         CASE WHEN rc.code = 'openrouter' THEN (CASE WHEN r < rate / 2 THEN 'rate_limited' ELSE 'timeout' END)
+              WHEN rc.code = 'huawei' THEN 'upstream_5xx' ELSE 'timeout' END AS etype,
+         CASE WHEN m.type = 'embedding' THEN 140
+              WHEN m.category = 'thinking' THEN base * 1.8 ELSE base END AS base
+  FROM (SELECT random() AS r,
+               CASE rc.code WHEN 'openrouter' THEN 0.12 WHEN 'huawei' THEN 0.05 WHEN 'minimax' THEN 0.03 ELSE 0.006 END AS rate,
+               CASE rc.code WHEN 'kubeai' THEN 380 WHEN 'deepseek' THEN 950 WHEN 'openrouter' THEN 1900 WHEN 'google' THEN 1150
+                            WHEN 'azure' THEN 1250 WHEN 'anthropic' THEN 1400 WHEN 'aws-bedrock' THEN 1350 ELSE 720 END AS base) q
+) x;
+-- @@
+UPDATE provider_test_runs r SET
+  total = x.total, passed = x.passed, failed = x.failed, skipped = x.skipped,
+  avg_latency_ms = COALESCE(x.avg_ms, 0), p95_latency_ms = COALESCE(x.p95_ms, 0),
+  status = CASE WHEN x.failed = 0 AND x.passed > 0 THEN 'success' WHEN x.passed = 0 THEN 'failed' ELSE 'partial' END,
+  summary = '通过 ' || x.passed || ' 项'
+            || CASE WHEN x.failed > 0 THEN '，失败 ' || x.failed || ' 项（' || x.reasons || '）' ELSE '' END
+            || CASE WHEN x.skipped > 0 THEN '，跳过 ' || x.skipped || ' 项' ELSE '' END
+            || CASE WHEN x.avg_ms > 0 THEN '，平均耗时 ' || x.avg_ms || ' ms' ELSE '' END
+FROM (
+  SELECT run_id, count(*) AS total,
+         count(*) FILTER (WHERE status = 'passed') AS passed,
+         count(*) FILTER (WHERE status = 'failed') AS failed,
+         count(*) FILTER (WHERE status = 'skipped') AS skipped,
+         (avg(latency_ms) FILTER (WHERE status = 'passed' AND check_type <> 'probe'))::int AS avg_ms,
+         percentile_disc(0.95) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE status = 'passed' AND check_type <> 'probe') AS p95_ms,
+         string_agg(DISTINCT CASE error_type WHEN 'auth' THEN '鉴权失败' WHEN 'timeout' THEN '超时' WHEN 'rate_limited' THEN '被限流'
+                                             WHEN 'upstream_5xx' THEN '供应商服务异常' END, '、') AS reasons
+  FROM provider_test_results GROUP BY run_id
+) x
+WHERE r.id = x.run_id;
+

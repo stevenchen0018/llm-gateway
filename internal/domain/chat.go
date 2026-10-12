@@ -159,6 +159,12 @@ type ProviderClient interface {
 	Embeddings(ctx context.Context, target CallTarget, req EmbeddingsRequest) (EmbeddingsResponse, error)
 }
 
+// ProviderProber is implemented by adapters that can check a supplier's
+// connectivity and credential without spending tokens (by listing models).
+type ProviderProber interface {
+	ListModels(ctx context.Context, provider Provider) ([]string, error)
+}
+
 // ImageResult is the outcome of an image generation call: each entry is an
 // http(s) URL or a data: URL.
 type ImageResult struct {

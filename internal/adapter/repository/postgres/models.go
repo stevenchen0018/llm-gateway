@@ -21,6 +21,7 @@ type ProviderRow struct {
 	Code         string          `gorm:"column:code"`
 	Name         string          `gorm:"column:name"`
 	BaseURL      string          `gorm:"column:base_url"`
+	Protocol     string          `gorm:"column:protocol"`
 	AuthType     string          `gorm:"column:auth_type"`
 	AuthValue    string          `gorm:"column:auth_value"`
 	Status       string          `gorm:"column:status"`

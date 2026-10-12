@@ -91,6 +91,7 @@ func run() error {
 	app.Filter.StartHitFlusher(workerCtx, 10*time.Second) // additive counters: safe on every node
 	if isMaster {
 		app.StartDigestScheduler(workerCtx, cfg.Digest)
+		app.Tests.StartScheduler(workerCtx) // supplier availability patrol + history purge
 	}
 
 	httpServer := &http.Server{

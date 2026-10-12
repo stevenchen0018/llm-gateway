@@ -85,7 +85,7 @@ const structure = [
   { label: '模型成本', paths: ['/cost', '/benchmark', '/budgets'] },
   { label: 'API Key', paths: ['/keys/mine', '/keys/apply', '/keys', '/blacklist'] },
   { label: '安全与合规', paths: ['/security/filter', '/security/requests'] },
-  { label: '平台管理', paths: ['/departments', '/users', '/applications', '/vendors', '/providers', '/announcements', '/audit', '/data'] },
+  { label: '平台管理', paths: ['/departments', '/users', '/applications', '/vendors', '/providers', '/provider-tests', '/announcements', '/audit', '/data'] },
   { label: '开发者', paths: ['/docs'] },
 ]
 const groupLabel = computed(() => structure.find((g) => g.paths.includes(route.path))?.label ?? '')

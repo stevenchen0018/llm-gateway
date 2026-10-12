@@ -34,7 +34,8 @@ func TestSpecRefsResolve(t *testing.T) {
 		}
 	}
 	walk(parsed)
-	for _, p := range []string{"/chat/completions", "/completions", "/embeddings", "/models"} {
+	for _, p := range []string{"/chat/completions", "/completions", "/embeddings", "/models", "/messages", "/messages/count_tokens",
+		"/models/{model}:generateContent", "/models/{model}:streamGenerateContent", "/models/{model}:embedContent"} {
 		if _, ok := parsed["paths"].(map[string]any)[p]; !ok {
 			t.Errorf("gateway endpoint %s is not documented", p)
 		}

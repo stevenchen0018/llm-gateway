@@ -14,6 +14,7 @@ import (
 var (
 	routingEnum  = []Enum{{"cost_first", "成本优先"}, {"supplier_priority", "供应商优先级"}, {"supplier_weighted", "供应商权重"}}
 	supplierEnum = []Enum{{domain.SupplierOfficial, "官方直连"}, {domain.SupplierCloud, "云平台"}, {domain.SupplierReseller, "代理商"}, {domain.SupplierSelfHosted, "自建"}}
+	protocolEnum = []Enum{{domain.ProtocolOpenAI, "OpenAI"}, {domain.ProtocolAnthropic, "Anthropic"}, {domain.ProtocolGemini, "Gemini"}}
 	authEnum     = []Enum{{"bearer", "Bearer Token"}, {"api_key_header", "Api-Key Header"}, {"none", "无"}}
 	shelfEnum    = []Enum{{"active", "上架"}, {"disabled", "下架"}}
 	typeEnum     = []Enum{{"chat", "对话/生成"}, {"embedding", "向量/重排"}}
@@ -131,8 +132,9 @@ func suppliersEntity(d Deps) *Entity {
 			{Key: "code", Title: "供应商编码", Required: true, Example: "aliyun"},
 			{Key: "name", Title: "供应商名称", Required: true, Example: "阿里云百炼", Width: 18},
 			{Key: "supplier_type", Title: "类型", Required: true, Enum: supplierEnum, Example: "云平台"},
-			{Key: "base_url", Title: "Base URL", Required: true, Desc: "OpenAI 兼容地址；mock://xxx 为内置 Mock", Example: "https://dashscope.aliyuncs.com/compatible-mode/v1", Width: 36},
-			{Key: "auth_type", Title: "鉴权方式", Enum: authEnum, Example: "Bearer Token", Width: 16},
+			{Key: "protocol", Title: "接口协议", Enum: protocolEnum, Desc: "OpenAI（含所有 OpenAI 兼容接口）/ Anthropic / Gemini；空为 OpenAI", Example: "OpenAI"},
+			{Key: "base_url", Title: "Base URL", Required: true, Desc: "供应商接口地址；mock://xxx 为内置 Mock", Example: "https://dashscope.aliyuncs.com/compatible-mode/v1", Width: 36},
+			{Key: "auth_type", Title: "鉴权方式", Enum: authEnum, Desc: "仅 OpenAI 协议生效；Anthropic / Gemini 使用协议原生请求头", Example: "Bearer Token", Width: 16},
 			{Key: "auth_value", Title: "凭证", ImportOnly: true, Desc: "API Key / Token；更新时留空表示不修改。文件中含凭证，请妥善保管并在导入后删除", Width: 20},
 			{Key: "discount_rate", Title: "折扣率", Desc: "0–1 之间，也可写 8.5折 或 85%；空为无折扣", Example: "0.9"},
 			{Key: "contact", Title: "商务联系人", Width: 18},
@@ -163,7 +165,7 @@ func suppliersEntity(d Deps) *Entity {
 				(q.Params.Get("supplier_type") != "" && p.SupplierType != q.Params.Get("supplier_type")) {
 				continue
 			}
-			rows = append(rows, []string{p.Code, p.Name, e.Label("supplier_type", p.SupplierType), p.BaseURL, e.Label("auth_type", orDefault(p.AuthType, "none")),
+			rows = append(rows, []string{p.Code, p.Name, e.Label("supplier_type", p.SupplierType), e.Label("protocol", orDefault(p.Protocol, domain.ProtocolOpenAI)), p.BaseURL, e.Label("auth_type", orDefault(p.AuthType, "none")),
 				p.DiscountRate.String(), p.Contact, p.Description, e.Label("status", string(p.Status)), strings.Join(supplies[p.ID], "、")})
 		}
 		return rows, nil
@@ -201,13 +203,16 @@ func suppliersEntity(d Deps) *Entity {
 			if r.Get("auth_type") != "" {
 				p.AuthType = auth
 			}
+			if r.Get("protocol") != "" {
+				p.Protocol = r.Get("protocol")
+			}
 			if v := r.Get("auth_value"); v != "" {
 				p.AuthValue = v
 			}
 			return Plan{Op: OpUpdate, Key: key, Summary: fmt.Sprintf("更新供应商 %s（%s）", code, p.Name),
 				Apply: func(ctx context.Context) error { return d.Market.UpdateProvider(ctx, &p) }}, nil
 		}
-		p := domain.Provider{Code: code, Name: r.Get("name"), SupplierType: r.Get("supplier_type"), BaseURL: r.Get("base_url"),
+		p := domain.Provider{Code: code, Name: r.Get("name"), SupplierType: r.Get("supplier_type"), BaseURL: r.Get("base_url"), Protocol: r.Get("protocol"),
 			AuthType: auth, AuthValue: r.Get("auth_value"), DiscountRate: rate, Contact: r.Get("contact"), Description: r.Get("description"),
 			Status: domain.ProviderStatus(orDefault(r.Get("status"), "active"))}
 		return Plan{Op: OpCreate, Key: key, Summary: fmt.Sprintf("新增供应商 %s（%s · %s）", code, p.Name, e.Label("supplier_type", p.SupplierType)),

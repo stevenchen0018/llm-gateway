@@ -2,7 +2,7 @@ import http, { TOKEN_KEY, getDeptScope } from './http'
 import type {
   AdminUser, AlertEvent, Vendor, VendorSupplier, VendorView, Announcement, DepartmentView, Me, Application, ApiKey, AuditLog, Budget, CapacityView, CategoryBoard, ChatResult,
   BudgetSummary, DigestItem, ImportResult, TransferEntity, TransferJob, FilterRule, PageParams, PageResult, FilterTestResult, GatewaySettings, ImageResult, RequestLog, VideoTask, Model, OverviewRow, Provider, RankRow, Route, RouteTrace, SeriesResult, Suggestion,
-  UsageLog, UsageSummary,
+  UsageLog, UsageSummary, ProviderTestRun, ProviderTestReport, ProviderTestOverview, ProviderTestSchedule,
 } from '../types'
 
 // Go serializes nil slices as null; normalise list responses to [].
@@ -214,4 +214,17 @@ export const transfer = {
     fd.append('file', file); fd.append('mode', opts.mode); fd.append('on_conflict', opts.on_conflict); fd.append('skip_invalid', String(opts.skip_invalid))
     return one<ImportResult>(http.post(`/admin/v1/transfer/${entity}/import`, fd, { timeout: 180_000 }))
   },
+}
+
+// supplier availability tests (供应商可用性测试) and reports
+export interface ProviderTestOptions { model_ids?: number[]; rounds?: number; timeout_seconds?: number; prompt?: string }
+export const providerTests = {
+  start: (providerId: number, o: ProviderTestOptions = {}) => one<ProviderTestRun>(http.post(`/admin/v1/providers/${providerId}/tests`, o)),
+  runAll: (o: ProviderTestOptions = {}) => list<ProviderTestRun>(http.post('/admin/v1/provider-tests/run-all', o)),
+  run: (id: number) => one<ProviderTestRun>(http.get(`/admin/v1/provider-tests/runs/${id}`)),
+  runs: (p: PageParams & { provider_id?: number; trigger?: string; status?: string }) => paged<ProviderTestRun>(http.get('/admin/v1/provider-tests/runs', { params: clean(p) })),
+  report: (providerId: number, days = 7) => one<ProviderTestReport>(http.get(`/admin/v1/providers/${providerId}/test-report`, { params: { days } })),
+  overview: (days = 7) => list<ProviderTestOverview>(http.get('/admin/v1/provider-tests/overview', { params: { days } })),
+  schedule: () => one<ProviderTestSchedule>(http.get('/admin/v1/provider-tests/schedule')),
+  saveSchedule: (s: ProviderTestSchedule) => one<ProviderTestSchedule>(http.put('/admin/v1/provider-tests/schedule', s)),
 }

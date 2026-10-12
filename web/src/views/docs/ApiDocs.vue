@@ -1,6 +1,6 @@
 <template>
   <div>
-    <PageHeader title="API 文档" desc="OpenAI 兼容的统一大模型接入文档：鉴权、接口定义、错误码、限流规则、多语言示例与在线调试">
+    <PageHeader title="API 文档" desc="统一大模型接入文档，兼容 OpenAI / Anthropic / Gemini 三种协议：鉴权、接口定义、错误码、限流规则、多语言示例与在线调试">
       <el-button :icon="Download" @click="openSpec">OpenAPI 规范</el-button>
       <el-button type="primary" :icon="Key" @click="$router.push('/keys/apply')">申请 API Key</el-button>
     </PageHeader>
@@ -10,10 +10,12 @@
       <nav class="toc">
         <div class="tgroup">接入指南</div>
         <a v-for="s in GUIDE" :key="s.id" :class="{ on: active === s.id }" @click="go(s.id)">{{ s.title }}</a>
-        <div class="tgroup">接口</div>
-        <a v-for="e in eps" :key="e.op.operationId" :class="{ on: active === e.op.operationId }" @click="go(e.op.operationId)">
-          <span class="m" :class="e.method.toLowerCase()">{{ e.method }}</span>{{ e.op.summary }}
-        </a>
+        <template v-for="g in epGroups" :key="g.proto">
+          <div class="tgroup">{{ g.title }}</div>
+          <a v-for="e in g.eps" :key="e.op.operationId" :class="{ on: active === e.op.operationId }" @click="go(e.op.operationId)">
+            <span class="m" :class="e.method.toLowerCase()">{{ e.method }}</span>{{ e.op.summary.replace(/（.*?）$/, '') }}
+          </a>
+        </template>
       </nav>
 
       <div ref="bodyRef" class="body">
@@ -29,8 +31,23 @@
           <p class="hint" v-html="md(spec.info.description.split('\n\n')[1] ?? '')" />
         </Panel>
 
+        <Panel id="protocols" title="多协议接入" flush>
+          <div class="pad"><p>网关同时兼容三种主流调用协议，业务可直接使用对应的官方 SDK 或工具；<b>任何协议都可以调用平台上的任意模型</b>（例如用 Anthropic SDK 调用 <code>deepseek-v3</code>），网关会转换为供应商的协议，路由、限流、预算、内容过滤与计费规则完全一致。</p></div>
+          <el-table :data="PROTOCOLS" size="small">
+            <el-table-column label="协议" width="110"><template #default="{ row }"><b>{{ row.name }}</b></template></el-table-column>
+            <el-table-column label="Base URL（SDK 配置）" min-width="220"><template #default="{ row }"><code class="nowrap">{{ row.base(origin) }}</code></template></el-table-column>
+            <el-table-column label="鉴权头" width="200"><template #default="{ row }"><code class="nowrap">{{ row.auth }}</code></template></el-table-column>
+            <el-table-column label="接口" min-width="240"><template #default="{ row }"><span class="mono small">{{ row.paths }}</span></template></el-table-column>
+            <el-table-column label="适用" min-width="200" prop="tools" />
+          </el-table>
+          <div class="pad">
+            <CodeTabs :codes="toolCodes" />
+            <p class="hint">说明：跨协议转换覆盖文本对话（含 system 提示词、多轮消息、流式输出、Token 用量与结束原因）；工具调用（tools / function calling）与图片内容暂不做跨协议转换，会以文字占位传递。所有协议均可使用 <code>Authorization: Bearer</code> 作为替代鉴权方式。</p>
+          </div>
+        </Panel>
+
         <Panel id="auth" title="鉴权">
-          <p>所有接口使用 HTTP Bearer 鉴权：<code>Authorization: Bearer sk-xxxxxxxx</code>。</p>
+          <p>OpenAI 协议使用 HTTP Bearer 鉴权：<code>Authorization: Bearer sk-xxxxxxxx</code>；Anthropic 协议使用 <code>x-api-key</code>，Gemini 协议使用 <code>x-goog-api-key</code>（或 <code>?key=</code>），值都是网关分发的 Key。</p>
           <ul class="bullets">
             <li>Key 被拉黑、未审批、已过期（试用 Key 7 天）或所属部门停用时，请求会被拒绝（401 / 403）。</li>
             <li>Key 归属于某个应用和部门；调用量、成本与告警均按部门隔离统计。</li>
@@ -67,13 +84,13 @@
             <el-table-column label="说明" min-width="300" prop="desc" />
             <el-table-column label="建议处理" min-width="220" prop="action" />
           </el-table>
-          <div class="pad"><p>错误响应体与 OpenAI 一致：</p><pre class="json">{{ JSON.stringify({ error: { message: 'Rate limit exceeded, please retry later', type: 'rate_limit_error', code: 'rate_limited' } }, null, 2) }}</pre></div>
+          <div class="pad"><p>错误码（<code>code</code>）在三种协议中一致，响应体使用各协议自己的格式：Anthropic 为 <code>{"type":"error","error":{...}}</code>，Gemini 为 <code>{"error":{"code","message","status"}}</code>。OpenAI 协议的错误体：</p><pre class="json">{{ JSON.stringify({ error: { message: 'Rate limit exceeded, please retry later', type: 'rate_limit_error', code: 'rate_limited' } }, null, 2) }}</pre></div>
         </Panel>
 
         <!-- endpoints -->
-        <Panel v-for="e in eps" :id="e.op.operationId" :key="e.op.operationId" class="ep">
+        <Panel v-for="e in orderedEps" :id="e.op.operationId" :key="e.op.operationId" class="ep">
           <template #extra><el-button type="primary" plain size="small" :icon="VideoPlay" @click="openTry(e)">在线调试</el-button></template>
-          <div class="ephead"><span class="m big" :class="e.method.toLowerCase()">{{ e.method }}</span><code class="path">/v1{{ e.path }}</code><span class="sum">{{ e.op.summary }}</span></div>
+          <div class="ephead"><span class="m big" :class="e.method.toLowerCase()">{{ e.method }}</span><code class="path">{{ pathPrefix(e) }}{{ e.path }}</code><span v-if="protocolOf(e) !== 'openai'" class="proto">{{ PROTO_TITLE[protocolOf(e)] }}</span><span class="sum">{{ e.op.summary }}</span></div>
           <p class="desc" v-html="md(e.op.description ?? '')" />
 
           <template v-if="reqSchema(e)">
@@ -81,7 +98,7 @@
             <el-table :data="flatten(spec, reqSchema(e))" size="small" class="params">
               <el-table-column label="参数" min-width="170"><template #default="{ row }"><code>{{ row.name }}</code></template></el-table-column>
               <el-table-column label="类型" min-width="150"><template #default="{ row }"><span class="type">{{ row.type }}</span></template></el-table-column>
-              <el-table-column label="必填" width="70"><template #default="{ row }"><StatusBadge v-if="row.required" text="必填" tone="danger" /><span v-else class="faint">可选</span></template></el-table-column>
+              <el-table-column label="必填" width="84"><template #default="{ row }"><StatusBadge v-if="row.required" text="必填" tone="danger" /><span v-else class="faint">可选</span></template></el-table-column>
               <el-table-column label="说明" min-width="260"><template #default="{ row }"><span v-html="md(row.description)" /></template></el-table-column>
             </el-table>
           </template>
@@ -107,11 +124,14 @@
     </div>
 
     <!-- try-it console -->
-    <el-drawer v-model="tryVisible" :title="`在线调试 · ${tryEp?.method} /v1${tryEp?.path}`" size="640px">
+    <el-drawer v-model="tryVisible" :title="`在线调试 · ${tryEp?.method} ${tryEp ? pathPrefix(tryEp) + tryEp.path : ''}`" size="640px">
       <el-form label-position="top">
         <el-form-item label="API Key">
           <el-input v-model="tryKey" type="password" show-password placeholder="sk-...（仅保存在本次浏览器会话中）" @change="saveKey" />
           <div class="hint">请求直接发往网关 <code>{{ base }}</code>，会真实计入该 Key 的配额、预算与调用日志。</div>
+        </el-form-item>
+        <el-form-item v-if="tryEp?.path.includes('{model}')" label="模型（路径参数 model）">
+          <el-input v-model="tryModel" placeholder="如 gemini-2.5-flash / deepseek-v3" />
         </el-form-item>
         <el-form-item v-if="tryEp?.method !== 'GET'" label="请求体（JSON）">
           <el-input v-model="tryBody" type="textarea" :rows="12" resize="vertical" class="mono-input" />
@@ -138,10 +158,10 @@ import { Download, Key, Promotion, VideoPlay } from '@element-plus/icons-vue'
 import PageHeader from '../../components/PageHeader.vue'
 import Panel from '../../components/Panel.vue'
 import StatusBadge from '../../components/StatusBadge.vue'
-import { LANGS, type Endpoint, type Lang, type Resp, type Spec, endpoints, flatten, resolveResp, sample } from './openapi'
+import { LANGS, type Endpoint, type Lang, type Protocol, type Resp, type Spec, authHeaders, concretePath, endpoints, flatten, protocolOf, resolveResp, sample } from './openapi'
 
 const GUIDE = [
-  { id: 'quickstart', title: '快速开始' }, { id: 'auth', title: '鉴权' }, { id: 'routing', title: '模型名与路由' },
+  { id: 'quickstart', title: '快速开始' }, { id: 'protocols', title: '多协议接入' }, { id: 'auth', title: '鉴权' }, { id: 'routing', title: '模型名与路由' },
   { id: 'limits', title: '限流与配额' }, { id: 'errors', title: '错误码' },
 ]
 const LIMITS = [
@@ -163,6 +183,19 @@ const ERRORS = [
   { status: 503, code: 'no_healthy_candidate', desc: '候选模型均处于熔断冷却中', action: '稍后重试（通常 1 分钟内恢复）' },
 ]
 
+const PROTO_TITLE: Record<Protocol, string> = { openai: 'OpenAI 协议', anthropic: 'Anthropic 协议', gemini: 'Gemini 协议' }
+const PROTOCOLS = [
+  { name: 'OpenAI', base: (o: string) => `${o}/v1`, auth: 'Authorization: Bearer', paths: '/v1/chat/completions · /v1/completions · /v1/embeddings · /v1/models', tools: 'OpenAI SDK、Cursor、Cline、Continue、Codex CLI、LangChain' },
+  { name: 'Anthropic', base: (o: string) => o, auth: 'x-api-key', paths: '/v1/messages · /v1/messages/count_tokens · /v1/models', tools: 'Anthropic SDK、Claude Code' },
+  { name: 'Gemini', base: (o: string) => o, auth: 'x-goog-api-key', paths: '/v1beta/models/{model}:generateContent · :streamGenerateContent · :embedContent · :batchEmbedContents · :countTokens', tools: 'Google Gen AI SDK、Gemini CLI' },
+]
+const origin = location.origin
+const toolCodes = {
+  'Claude Code': `# 个人编码 Key 接入 Claude Code\nexport ANTHROPIC_BASE_URL=${origin}\nexport ANTHROPIC_AUTH_TOKEN=sk-your-key\nexport ANTHROPIC_MODEL=claude-sonnet-4   # 或平台上的其他编码模型，如 deepseek-v3\nclaude`,
+  'Gemini CLI': `export GOOGLE_GEMINI_BASE_URL=${origin}\nexport GEMINI_API_KEY=sk-your-key\ngemini -m gemini-2.5-flash`,
+  'Codex / OpenAI 兼容工具': `export OPENAI_BASE_URL=${origin}/v1\nexport OPENAI_API_KEY=sk-your-key`,
+}
+
 // small tabbed code viewer
 const CodeTabs = defineComponent({
   props: { codes: { type: Object as () => Record<string, string>, required: true } },
@@ -181,6 +214,19 @@ const CodeTabs = defineComponent({
 const spec = ref<Spec | null>(null)
 const base = computed(() => spec.value?.servers?.[0]?.url ?? `${location.origin}/v1`)
 const eps = computed(() => (spec.value ? endpoints(spec.value) : []))
+const epGroups = computed(() => (['openai', 'anthropic', 'gemini'] as Protocol[])
+  .map((proto) => ({ proto, title: PROTO_TITLE[proto], eps: eps.value.filter((e) => protocolOf(e) === proto).sort((a, b) => epRank(a) - epRank(b)) }))
+  .filter((g) => g.eps.length))
+const orderedEps = computed(() => epGroups.value.flatMap((g) => g.eps))
+// display order (the spec's paths are a JSON object and arrive sorted by key)
+const EP_ORDER = ['createChatCompletion', 'createCompletion', 'createEmbedding', 'listModels', 'createMessage', 'countMessageTokens', 'geminiGenerateContent', 'geminiStreamGenerateContent', 'geminiEmbedContent']
+const epRank = (e: Endpoint) => { const i = EP_ORDER.indexOf(e.op.operationId); return i < 0 ? 99 : i }
+// path prefix of an endpoint: /v1 by default, /v1beta for the Gemini operations
+const pathPrefix = (e: Endpoint) => {
+  const u = e.op.servers?.[0]?.url
+  if (!u) return '/v1'
+  try { return new URL(u, location.origin).pathname.replace(/\/$/, '') } catch { return u }
+}
 const errorRows = ERRORS
 
 onMounted(async () => {
@@ -238,12 +284,17 @@ const tryVisible = ref(false)
 const tryEp = ref<Endpoint | null>(null)
 const tryKey = ref(sessionStorage.getItem(KEY_STORE) ?? '')
 const tryBody = ref('')
+const tryModel = ref('')
 const trying = ref(false)
 const tryRes = ref<{ status: number; ms: number; requestId: string; body: string } | null>(null)
 
 function saveKey() { sessionStorage.setItem(KEY_STORE, tryKey.value) }
 function resetBody() { tryBody.value = JSON.stringify(tryEp.value ? reqContent(tryEp.value)?.example ?? {} : {}, null, 2) }
-function openTry(e: Endpoint) { tryEp.value = e; tryRes.value = null; resetBody(); tryVisible.value = true }
+function openTry(e: Endpoint) {
+  tryEp.value = e; tryRes.value = null; resetBody()
+  tryModel.value = e.op.parameters?.find((p) => p.name === 'model')?.example ?? ''
+  tryVisible.value = true
+}
 
 async function send() {
   const e = tryEp.value!
@@ -255,7 +306,8 @@ async function send() {
   trying.value = true
   const t0 = performance.now()
   try {
-    const res = await fetch(`/v1${e.path}`, { method: e.method, headers: { Authorization: `Bearer ${tryKey.value.trim()}`, 'Content-Type': 'application/json' }, body })
+    const path = pathPrefix(e) + concretePath(e, { model: encodeURIComponent(tryModel.value.trim()) }) + (e.op.operationId === 'geminiStreamGenerateContent' ? '?alt=sse' : '')
+    const res = await fetch(path, { method: e.method, headers: { ...authHeaders(protocolOf(e), tryKey.value.trim()), 'Content-Type': 'application/json' }, body })
     const text = await res.text()
     let pretty = text
     try { pretty = JSON.stringify(JSON.parse(text), null, 2) } catch { /* not JSON */ }
@@ -283,6 +335,8 @@ async function send() {
 .ephead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .path { font-family: var(--mono); font-size: 14px; font-weight: 600; }
 .sum { color: var(--text-2); }
+.proto { padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 500; }
+.small { font-size: 12px; color: var(--text-2); }
 .desc { color: var(--text-2); line-height: 1.7; margin: 10px 0 0; }
 h5 { margin: 18px 0 8px; font-size: 13px; font-weight: 600; }
 .params { border: 1px solid var(--border-soft); border-radius: 8px; }

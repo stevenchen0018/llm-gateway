@@ -15,7 +15,8 @@ const props = withDefaults(defineProps<{
   seriesName: string
   color?: string
   height?: string
-}>(), { height: '300px' })
+  integer?: boolean
+}>(), { height: '300px', integer: false })
 
-const option = computed(() => buildRankOption({ rows: props.rows, fmt: props.fmt, seriesName: props.seriesName, color: props.color }))
+const option = computed(() => buildRankOption({ rows: props.rows, fmt: props.fmt, seriesName: props.seriesName, color: props.color, integer: props.integer }))
 </script>

@@ -3,249 +3,1746 @@
   "info": {
     "title": "LLM Gateway 统一大模型 API",
     "version": "1.0.0",
-    "description": "OpenAI 兼容的统一大模型接入接口。业务只需携带 `model` 调用统一 API，网关负责厂商匹配、按 API Key 命中调度策略、跨厂商容灾、Key/模型/部门三级 TPM·QPS 限流与预算管控。\n\n可直接使用 OpenAI 官方 SDK，只需把 `base_url` 指向网关、`api_key` 换成网关分发的 Key。"
+    "description": "统一大模型接入接口，同时兼容 **OpenAI**、**Anthropic** 与 **Gemini** 三种调用协议。业务只需携带 `model` 调用统一 API，网关负责厂商匹配、按 API Key 命中调度策略、跨厂商容灾、Key/模型/部门三级 TPM·QPS 限流与预算管控。\n\n可直接使用 OpenAI、Anthropic 或 Google Gen AI 官方 SDK，只需把 base URL 指向网关、API Key 换成网关分发的 Key；任何协议都可以调用平台上的任意模型，网关会转换为供应商的协议。"
   },
-  "servers": [{ "url": "/v1" }],
-  "security": [{ "bearerAuth": [] }],
+  "servers": [
+    {
+      "url": "/v1"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
   "tags": [
-    { "name": "对话", "description": "文本生成与多轮对话" },
-    { "name": "补全", "description": "兼容旧版单 prompt 接口" },
-    { "name": "向量", "description": "文本向量化" },
-    { "name": "模型", "description": "可用模型列表" }
+    {
+      "name": "对话",
+      "description": "文本生成与多轮对话"
+    },
+    {
+      "name": "补全",
+      "description": "兼容旧版单 prompt 接口"
+    },
+    {
+      "name": "向量",
+      "description": "文本向量化"
+    },
+    {
+      "name": "模型",
+      "description": "可用模型列表"
+    },
+    {
+      "name": "Anthropic 协议",
+      "description": "Anthropic Messages API 兼容接口（Anthropic SDK / Claude Code）"
+    },
+    {
+      "name": "Gemini 协议",
+      "description": "Gemini API 兼容接口（Google Gen AI SDK / Gemini CLI）"
+    }
   ],
   "paths": {
     "/chat/completions": {
       "post": {
-        "tags": ["对话"],
+        "tags": [
+          "对话"
+        ],
         "operationId": "createChatCompletion",
         "summary": "创建对话补全",
         "description": "根据消息列表生成回复。`model` 可以是模型名（如 `deepseek-r1`），也可以是 `供应商/模型`（如 `aliyun/deepseek-r1`）固定调用渠道、或 `厂商/模型` 限定模型厂商；同一模型由多家供应商提供时，按该 Key 命中的调度策略或厂商的供应商选择方式路由，失败自动切换到下一家供应商。Key 设置了可用模型时，名单外的模型返回 403 `model_not_allowed`。",
         "requestBody": {
           "required": true,
-          "content": { "application/json": {
-            "schema": { "$ref": "#/components/schemas/ChatCompletionRequest" },
-            "example": { "model": "deepseek-r1", "messages": [{ "role": "system", "content": "你是一个专业的运维助手" }, { "role": "user", "content": "分析这组告警的根因" }], "temperature": 0.7, "max_tokens": 1024 }
-          } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatCompletionRequest"
+              },
+              "example": {
+                "model": "deepseek-r1",
+                "messages": [
+                  {
+                    "role": "system",
+                    "content": "你是一个专业的运维助手"
+                  },
+                  {
+                    "role": "user",
+                    "content": "分析这组告警的根因"
+                  }
+                ],
+                "temperature": 0.7,
+                "max_tokens": 1024
+              }
+            }
+          }
         },
         "responses": {
           "200": {
             "description": "成功",
-            "headers": { "X-Request-Id": { "$ref": "#/components/headers/RequestId" } },
-            "content": { "application/json": {
-              "schema": { "$ref": "#/components/schemas/ChatCompletionResponse" },
-              "example": { "id": "5d1c0f0e-8a0b-4c55-9c3e-2f2b0c9d6a11", "model": "deepseek-r1", "created": 1790571050, "choices": [{ "index": 0, "message": { "role": "assistant", "content": "根因是……" }, "finish_reason": "stop" }], "usage": { "prompt_tokens": 32, "completion_tokens": 186, "total_tokens": 218 } }
-            } }
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatCompletionResponse"
+                },
+                "example": {
+                  "id": "5d1c0f0e-8a0b-4c55-9c3e-2f2b0c9d6a11",
+                  "model": "deepseek-r1",
+                  "created": 1790571050,
+                  "choices": [
+                    {
+                      "index": 0,
+                      "message": {
+                        "role": "assistant",
+                        "content": "根因是……"
+                      },
+                      "finish_reason": "stop"
+                    }
+                  ],
+                  "usage": {
+                    "prompt_tokens": 32,
+                    "completion_tokens": 186,
+                    "total_tokens": 218
+                  }
+                }
+              }
+            }
           },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "402": { "$ref": "#/components/responses/BudgetExceeded" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "429": { "$ref": "#/components/responses/RateLimited" },
-          "502": { "$ref": "#/components/responses/Upstream" },
-          "503": { "$ref": "#/components/responses/Unavailable" }
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/BudgetExceeded"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "502": {
+            "$ref": "#/components/responses/Upstream"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
         }
       }
     },
     "/completions": {
       "post": {
-        "tags": ["补全"],
+        "tags": [
+          "补全"
+        ],
         "operationId": "createCompletion",
         "summary": "创建文本补全（旧版）",
         "description": "单个 `prompt` 的兼容接口，内部按一条 user 消息处理，路由、限流与计费规则与对话接口一致。",
         "requestBody": {
           "required": true,
-          "content": { "application/json": {
-            "schema": { "$ref": "#/components/schemas/CompletionRequest" },
-            "example": { "model": "qwen-max", "prompt": "为这款商品写一句推荐语：", "max_tokens": 64 }
-          } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompletionRequest"
+              },
+              "example": {
+                "model": "qwen-max",
+                "prompt": "为这款商品写一句推荐语：",
+                "max_tokens": 64
+              }
+            }
+          }
         },
         "responses": {
           "200": {
             "description": "成功",
-            "content": { "application/json": {
-              "schema": { "$ref": "#/components/schemas/CompletionResponse" },
-              "example": { "id": "b7f5…", "model": "qwen-max", "created": 1790571050, "choices": [{ "index": 0, "text": "轻盈透气，一穿就爱上。", "finish_reason": "stop" }], "usage": { "prompt_tokens": 12, "completion_tokens": 14, "total_tokens": 26 } }
-            } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompletionResponse"
+                },
+                "example": {
+                  "id": "b7f5…",
+                  "model": "qwen-max",
+                  "created": 1790571050,
+                  "choices": [
+                    {
+                      "index": 0,
+                      "text": "轻盈透气，一穿就爱上。",
+                      "finish_reason": "stop"
+                    }
+                  ],
+                  "usage": {
+                    "prompt_tokens": 12,
+                    "completion_tokens": 14,
+                    "total_tokens": 26
+                  }
+                }
+              }
+            }
           },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "402": { "$ref": "#/components/responses/BudgetExceeded" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "429": { "$ref": "#/components/responses/RateLimited" },
-          "502": { "$ref": "#/components/responses/Upstream" }
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/BudgetExceeded"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "502": {
+            "$ref": "#/components/responses/Upstream"
+          }
         }
       }
     },
     "/embeddings": {
       "post": {
-        "tags": ["向量"],
+        "tags": [
+          "向量"
+        ],
         "operationId": "createEmbedding",
         "summary": "创建文本向量",
         "description": "将文本转换为向量。`input` 可以是字符串或字符串数组。",
         "requestBody": {
           "required": true,
-          "content": { "application/json": {
-            "schema": { "$ref": "#/components/schemas/EmbeddingsRequest" },
-            "example": { "model": "text-embedding-v4", "input": ["轻薄羽绒服", "加厚保暖棉服"] }
-          } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmbeddingsRequest"
+              },
+              "example": {
+                "model": "text-embedding-v4",
+                "input": [
+                  "轻薄羽绒服",
+                  "加厚保暖棉服"
+                ]
+              }
+            }
+          }
         },
         "responses": {
           "200": {
             "description": "成功",
-            "content": { "application/json": {
-              "schema": { "$ref": "#/components/schemas/EmbeddingsResponse" },
-              "example": { "model": "text-embedding-v4", "data": [{ "index": 0, "embedding": [0.0123, -0.0456, 0.0789] }], "usage": { "prompt_tokens": 8, "completion_tokens": 0, "total_tokens": 8 } }
-            } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmbeddingsResponse"
+                },
+                "example": {
+                  "model": "text-embedding-v4",
+                  "data": [
+                    {
+                      "index": 0,
+                      "embedding": [
+                        0.0123,
+                        -0.0456,
+                        0.0789
+                      ]
+                    }
+                  ],
+                  "usage": {
+                    "prompt_tokens": 8,
+                    "completion_tokens": 0,
+                    "total_tokens": 8
+                  }
+                }
+              }
+            }
           },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "402": { "$ref": "#/components/responses/BudgetExceeded" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "429": { "$ref": "#/components/responses/RateLimited" },
-          "502": { "$ref": "#/components/responses/Upstream" }
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/BudgetExceeded"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "502": {
+            "$ref": "#/components/responses/Upstream"
+          }
         }
       }
     },
     "/models": {
       "get": {
-        "tags": ["模型"],
+        "tags": [
+          "模型"
+        ],
         "operationId": "listModels",
         "summary": "列出可用模型",
         "description": "返回模型市场中已上架的模型。",
         "responses": {
           "200": {
             "description": "成功",
-            "content": { "application/json": {
-              "schema": { "$ref": "#/components/schemas/ModelList" },
-              "example": { "object": "list", "data": [{ "id": "deepseek-r1", "object": "model", "owned_by": "aliyun" }] }
-            } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelList"
+                },
+                "example": {
+                  "object": "list",
+                  "data": [
+                    {
+                      "id": "deepseek-r1",
+                      "object": "model",
+                      "owned_by": "aliyun"
+                    }
+                  ]
+                }
+              }
+            }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/Forbidden" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/messages": {
+      "post": {
+        "tags": [
+          "Anthropic 协议"
+        ],
+        "operationId": "createMessage",
+        "x-protocol": "anthropic",
+        "security": [
+          {
+            "anthropicKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "创建消息（Anthropic）",
+        "description": "Anthropic Messages API 兼容接口。Anthropic SDK 的 `base_url` 设为网关根地址（不带 `/v1`），Claude Code 设置 `ANTHROPIC_BASE_URL` 即可。请求会转换为统一请求，与 OpenAI 协议共用路由、限流、预算与内容过滤，并可由任意协议的供应商提供服务。当前转换文本内容，工具调用（tools）与图片不做跨协议转换。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnthropicMessagesRequest"
+              },
+              "example": {
+                "model": "claude-sonnet-4",
+                "max_tokens": 1024,
+                "system": "你是资深 Go 工程师",
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "用一句话解释 context 的作用"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnthropicMessagesResponse"
+                },
+                "example": {
+                  "id": "msg_0a1b2c3d",
+                  "type": "message",
+                  "role": "assistant",
+                  "model": "claude-sonnet-4",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "context 用于在 goroutine 之间传递取消信号、截止时间和请求范围的值。"
+                    }
+                  ],
+                  "stop_reason": "end_turn",
+                  "stop_sequence": null,
+                  "usage": {
+                    "input_tokens": 24,
+                    "output_tokens": 28
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/AnthropicBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/AnthropicUnauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/AnthropicRateLimited"
+          },
+          "502": {
+            "$ref": "#/components/responses/AnthropicUpstream"
+          }
+        }
+      }
+    },
+    "/messages/count_tokens": {
+      "post": {
+        "tags": [
+          "Anthropic 协议"
+        ],
+        "operationId": "countMessageTokens",
+        "x-protocol": "anthropic",
+        "security": [
+          {
+            "anthropicKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "估算输入 Token（Anthropic）",
+        "description": "按网关的 Token 估算器计算输入 Token 数，不调用供应商、不计费。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnthropicMessagesRequest"
+              },
+              "example": {
+                "model": "claude-sonnet-4",
+                "max_tokens": 1024,
+                "system": "你是资深 Go 工程师",
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "用一句话解释 context 的作用"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnthropicCountTokensResponse"
+                },
+                "example": {
+                  "input_tokens": 24
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/AnthropicBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/AnthropicUnauthorized"
+          }
+        }
+      }
+    },
+    "/models/{model}:generateContent": {
+      "post": {
+        "tags": [
+          "Gemini 协议"
+        ],
+        "operationId": "geminiGenerateContent",
+        "x-protocol": "gemini",
+        "servers": [
+          {
+            "url": "/v1beta",
+            "description": "Gemini 协议"
+          }
+        ],
+        "security": [
+          {
+            "geminiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "model",
+            "in": "path",
+            "required": true,
+            "description": "模型名，可以是平台上的任意模型",
+            "schema": {
+              "type": "string"
+            },
+            "example": "gemini-2.5-flash"
+          }
+        ],
+        "summary": "生成内容（Gemini）",
+        "description": "Gemini API 兼容接口。Google Gen AI SDK 的 `base_url` 设为网关根地址即可，鉴权头 `x-goog-api-key` 传网关 Key。`{model}` 可以是平台上的任意模型（如 `deepseek-v3`），网关会转换为供应商的协议。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeminiGenerateContentRequest"
+              },
+              "example": {
+                "systemInstruction": {
+                  "parts": [
+                    {
+                      "text": "回答简洁"
+                    }
+                  ]
+                },
+                "contents": [
+                  {
+                    "role": "user",
+                    "parts": [
+                      {
+                        "text": "给新品羽绒服写一句广告语"
+                      }
+                    ]
+                  }
+                ],
+                "generationConfig": {
+                  "maxOutputTokens": 256,
+                  "temperature": 0.7
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeminiGenerateContentResponse"
+                },
+                "example": {
+                  "candidates": [
+                    {
+                      "content": {
+                        "role": "model",
+                        "parts": [
+                          {
+                            "text": "轻若无物，暖到心里。"
+                          }
+                        ]
+                      },
+                      "finishReason": "STOP",
+                      "index": 0
+                    }
+                  ],
+                  "usageMetadata": {
+                    "promptTokenCount": 18,
+                    "candidatesTokenCount": 9,
+                    "totalTokenCount": 27
+                  },
+                  "modelVersion": "gemini-2.5-flash",
+                  "responseId": "0f6c2a8e-5d1b-4c2e-9a77-3b8c1d2e4f50"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/GeminiBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/GeminiUnauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/GeminiRateLimited"
+          },
+          "502": {
+            "$ref": "#/components/responses/GeminiUpstream"
+          }
+        }
+      }
+    },
+    "/models/{model}:streamGenerateContent": {
+      "post": {
+        "tags": [
+          "Gemini 协议"
+        ],
+        "operationId": "geminiStreamGenerateContent",
+        "x-protocol": "gemini",
+        "servers": [
+          {
+            "url": "/v1beta",
+            "description": "Gemini 协议"
+          }
+        ],
+        "security": [
+          {
+            "geminiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "model",
+            "in": "path",
+            "required": true,
+            "description": "模型名，可以是平台上的任意模型",
+            "schema": {
+              "type": "string"
+            },
+            "example": "gemini-2.5-flash"
+          },
+          {
+            "name": "alt",
+            "in": "query",
+            "required": false,
+            "description": "传 `sse` 时以 Server-Sent Events 返回（SDK 默认）；否则返回 JSON 数组流",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "sse"
+              ]
+            }
+          }
+        ],
+        "summary": "流式生成内容（Gemini）",
+        "description": "与 generateContent 相同，按片段流式返回；最后一个片段包含 `finishReason` 与 `usageMetadata`。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeminiGenerateContentRequest"
+              },
+              "example": {
+                "systemInstruction": {
+                  "parts": [
+                    {
+                      "text": "回答简洁"
+                    }
+                  ]
+                },
+                "contents": [
+                  {
+                    "role": "user",
+                    "parts": [
+                      {
+                        "text": "给新品羽绒服写一句广告语"
+                      }
+                    ]
+                  }
+                ],
+                "generationConfig": {
+                  "maxOutputTokens": 256,
+                  "temperature": 0.7
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeminiGenerateContentResponse"
+                },
+                "example": {
+                  "candidates": [
+                    {
+                      "content": {
+                        "role": "model",
+                        "parts": [
+                          {
+                            "text": "轻若无物，暖到心里。"
+                          }
+                        ]
+                      },
+                      "finishReason": "STOP",
+                      "index": 0
+                    }
+                  ],
+                  "usageMetadata": {
+                    "promptTokenCount": 18,
+                    "candidatesTokenCount": 9,
+                    "totalTokenCount": 27
+                  },
+                  "modelVersion": "gemini-2.5-flash",
+                  "responseId": "0f6c2a8e-5d1b-4c2e-9a77-3b8c1d2e4f50"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/GeminiBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/GeminiUnauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/GeminiRateLimited"
+          },
+          "502": {
+            "$ref": "#/components/responses/GeminiUpstream"
+          }
+        }
+      }
+    },
+    "/models/{model}:embedContent": {
+      "post": {
+        "tags": [
+          "Gemini 协议"
+        ],
+        "operationId": "geminiEmbedContent",
+        "x-protocol": "gemini",
+        "servers": [
+          {
+            "url": "/v1beta",
+            "description": "Gemini 协议"
+          }
+        ],
+        "security": [
+          {
+            "geminiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "model",
+            "in": "path",
+            "required": true,
+            "description": "模型名，可以是平台上的任意模型",
+            "schema": {
+              "type": "string"
+            },
+            "example": "text-embedding-v4"
+          }
+        ],
+        "summary": "文本向量（Gemini）",
+        "description": "Gemini embedContent 兼容接口；批量请使用 `:batchEmbedContents`（`requests[].content`）。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeminiEmbedContentRequest"
+              },
+              "example": {
+                "content": {
+                  "parts": [
+                    {
+                      "text": "轻薄羽绒服"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeminiEmbedContentResponse"
+                },
+                "example": {
+                  "embedding": {
+                    "values": [
+                      0.0123,
+                      -0.0456,
+                      0.0789
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/GeminiBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/GeminiUnauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/GeminiRateLimited"
+          },
+          "502": {
+            "$ref": "#/components/responses/GeminiUpstream"
+          }
         }
       }
     }
   },
   "components": {
     "securitySchemes": {
-      "bearerAuth": { "type": "http", "scheme": "bearer", "description": "网关分发的 API Key，形如 `sk-xxxxxxxx`。在控制台「API Key · Key 申请」提交，审批后获得（密钥仅展示一次）。" }
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "网关分发的 API Key，形如 `sk-xxxxxxxx`。在控制台「API Key · Key 申请」提交，审批后获得（密钥仅展示一次）。"
+      },
+      "anthropicKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-api-key",
+        "description": "Anthropic 协议的鉴权头，值为网关分发的 API Key；也可使用 Authorization: Bearer。"
+      },
+      "geminiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-goog-api-key",
+        "description": "Gemini 协议的鉴权头，值为网关分发的 API Key；也可使用 ?key= 查询参数或 Authorization: Bearer。"
+      }
     },
     "headers": {
-      "RequestId": { "description": "本次调用的唯一 ID，排查问题时提供给管理员，可在「调用日志」中检索", "schema": { "type": "string" } }
+      "RequestId": {
+        "description": "本次调用的唯一 ID，排查问题时提供给管理员，可在「调用日志」中检索",
+        "schema": {
+          "type": "string"
+        }
+      }
     },
     "schemas": {
       "ChatMessage": {
         "type": "object",
-        "required": ["role", "content"],
+        "required": [
+          "role",
+          "content"
+        ],
         "properties": {
-          "role": { "type": "string", "enum": ["system", "user", "assistant"], "description": "消息角色" },
-          "content": { "type": "string", "description": "消息内容" }
+          "role": {
+            "type": "string",
+            "enum": [
+              "system",
+              "user",
+              "assistant"
+            ],
+            "description": "消息角色"
+          },
+          "content": {
+            "type": "string",
+            "description": "消息内容"
+          }
         }
       },
       "ChatCompletionRequest": {
         "type": "object",
-        "required": ["model", "messages"],
+        "required": [
+          "model",
+          "messages"
+        ],
         "properties": {
-          "model": { "type": "string", "description": "模型名、`供应商/模型` 或 `厂商/模型`，例如 `deepseek-r1`、`aliyun/deepseek-r1`" },
-          "messages": { "type": "array", "items": { "$ref": "#/components/schemas/ChatMessage" }, "description": "对话消息，按时间顺序" },
-          "temperature": { "type": "number", "minimum": 0, "maximum": 2, "description": "采样温度，越高越随机" },
-          "top_p": { "type": "number", "minimum": 0, "maximum": 1, "description": "核采样概率阈值" },
-          "max_tokens": { "type": "integer", "minimum": 1, "description": "最大输出 Token 数；同时用于 TPM 预占，建议按实际需要设置" },
-          "stream": { "type": "boolean", "default": false, "description": "为 true 时以 SSE（`text/event-stream`，`chat.completion.chunk` + `data: [DONE]`）返回，兼容 IDE 编码助手与 OpenAI SDK 的流式调用；网关在拿到完整回复后分块推送，末块携带 usage" }
+          "model": {
+            "type": "string",
+            "description": "模型名、`供应商/模型` 或 `厂商/模型`，例如 `deepseek-r1`、`aliyun/deepseek-r1`"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChatMessage"
+            },
+            "description": "对话消息，按时间顺序"
+          },
+          "temperature": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 2,
+            "description": "采样温度，越高越随机"
+          },
+          "top_p": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "核采样概率阈值"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "最大输出 Token 数；同时用于 TPM 预占，建议按实际需要设置"
+          },
+          "stream": {
+            "type": "boolean",
+            "default": false,
+            "description": "为 true 时以 SSE（`text/event-stream`，`chat.completion.chunk` + `data: [DONE]`）返回，兼容 IDE 编码助手与 OpenAI SDK 的流式调用；网关在拿到完整回复后分块推送，末块携带 usage"
+          }
         }
       },
       "Usage": {
         "type": "object",
         "properties": {
-          "prompt_tokens": { "type": "integer", "description": "输入 Token 数" },
-          "completion_tokens": { "type": "integer", "description": "输出 Token 数" },
-          "total_tokens": { "type": "integer", "description": "合计，计费与 TPM 结算依据" }
+          "prompt_tokens": {
+            "type": "integer",
+            "description": "输入 Token 数"
+          },
+          "completion_tokens": {
+            "type": "integer",
+            "description": "输出 Token 数"
+          },
+          "total_tokens": {
+            "type": "integer",
+            "description": "合计，计费与 TPM 结算依据"
+          }
         }
       },
       "ChatCompletionResponse": {
         "type": "object",
         "properties": {
-          "id": { "type": "string", "description": "请求 ID（同 X-Request-Id）" },
-          "model": { "type": "string", "description": "请求时传入的模型名" },
-          "created": { "type": "integer", "description": "Unix 时间戳（秒）" },
-          "choices": { "type": "array", "items": { "type": "object", "properties": {
-            "index": { "type": "integer" },
-            "message": { "$ref": "#/components/schemas/ChatMessage" },
-            "finish_reason": { "type": "string", "description": "stop / length 等" }
-          } } },
-          "usage": { "$ref": "#/components/schemas/Usage" }
+          "id": {
+            "type": "string",
+            "description": "请求 ID（同 X-Request-Id）"
+          },
+          "model": {
+            "type": "string",
+            "description": "请求时传入的模型名"
+          },
+          "created": {
+            "type": "integer",
+            "description": "Unix 时间戳（秒）"
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "index": {
+                  "type": "integer"
+                },
+                "message": {
+                  "$ref": "#/components/schemas/ChatMessage"
+                },
+                "finish_reason": {
+                  "type": "string",
+                  "description": "stop / length 等"
+                }
+              }
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
         }
       },
       "CompletionRequest": {
         "type": "object",
-        "required": ["model", "prompt"],
+        "required": [
+          "model",
+          "prompt"
+        ],
         "properties": {
-          "model": { "type": "string", "description": "模型名" },
-          "prompt": { "type": "string", "description": "提示词" },
-          "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
-          "max_tokens": { "type": "integer", "minimum": 1 }
+          "model": {
+            "type": "string",
+            "description": "模型名"
+          },
+          "prompt": {
+            "type": "string",
+            "description": "提示词"
+          },
+          "temperature": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 2
+          },
+          "max_tokens": {
+            "type": "integer",
+            "minimum": 1
+          }
         }
       },
       "CompletionResponse": {
         "type": "object",
         "properties": {
-          "id": { "type": "string" },
-          "model": { "type": "string" },
-          "created": { "type": "integer" },
-          "choices": { "type": "array", "items": { "type": "object", "properties": {
-            "index": { "type": "integer" }, "text": { "type": "string" }, "finish_reason": { "type": "string" }
-          } } },
-          "usage": { "$ref": "#/components/schemas/Usage" }
+          "id": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "created": {
+            "type": "integer"
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "index": {
+                  "type": "integer"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "finish_reason": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
         }
       },
       "EmbeddingsRequest": {
         "type": "object",
-        "required": ["model", "input"],
+        "required": [
+          "model",
+          "input"
+        ],
         "properties": {
-          "model": { "type": "string", "description": "向量模型名" },
-          "input": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }], "description": "待向量化的文本，字符串或字符串数组" }
+          "model": {
+            "type": "string",
+            "description": "向量模型名"
+          },
+          "input": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ],
+            "description": "待向量化的文本，字符串或字符串数组"
+          }
         }
       },
       "EmbeddingsResponse": {
         "type": "object",
         "properties": {
-          "model": { "type": "string" },
-          "data": { "type": "array", "items": { "type": "object", "properties": {
-            "index": { "type": "integer" },
-            "embedding": { "type": "array", "items": { "type": "number" } }
-          } } },
-          "usage": { "$ref": "#/components/schemas/Usage" }
+          "model": {
+            "type": "string"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "index": {
+                  "type": "integer"
+                },
+                "embedding": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
         }
       },
       "ModelList": {
         "type": "object",
         "properties": {
-          "object": { "type": "string", "example": "list" },
-          "data": { "type": "array", "items": { "type": "object", "properties": {
-            "id": { "type": "string" }, "object": { "type": "string" }, "owned_by": { "type": "string", "description": "厂商编码" }
-          } } }
+          "object": {
+            "type": "string",
+            "example": "list"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "object": {
+                  "type": "string"
+                },
+                "owned_by": {
+                  "type": "string",
+                  "description": "厂商编码"
+                }
+              }
+            }
+          }
         }
       },
       "Error": {
         "type": "object",
         "properties": {
-          "error": { "type": "object", "properties": {
-            "message": { "type": "string", "description": "可读的错误说明" },
-            "type": { "type": "string", "description": "错误大类" },
-            "code": { "type": "string", "description": "机器可读的错误码" },
-            "param": { "type": "string" }
-          } }
+          "error": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string",
+                "description": "可读的错误说明"
+              },
+              "type": {
+                "type": "string",
+                "description": "错误大类"
+              },
+              "code": {
+                "type": "string",
+                "description": "机器可读的错误码"
+              },
+              "param": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "AnthropicContentBlock": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "`text`；`image`、`tool_use`、`tool_result` 会转为文字占位后参与对话"
+          },
+          "text": {
+            "type": "string",
+            "description": "文本内容"
+          }
+        }
+      },
+      "AnthropicMessage": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "description": "角色"
+          },
+          "content": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AnthropicContentBlock"
+                }
+              }
+            ],
+            "description": "字符串或内容块数组"
+          }
+        }
+      },
+      "AnthropicMessagesRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "max_tokens",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "模型名，可以是平台上的任意模型（如 `claude-sonnet-4`、`deepseek-v3`）"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "最大输出 Token 数，用于 TPM 预占"
+          },
+          "system": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AnthropicContentBlock"
+                }
+              }
+            ],
+            "description": "系统提示词"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnthropicMessage"
+            },
+            "description": "对话消息"
+          },
+          "temperature": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "采样温度"
+          },
+          "top_p": {
+            "type": "number",
+            "description": "核采样"
+          },
+          "stream": {
+            "type": "boolean",
+            "default": false,
+            "description": "为 true 时按 Messages API 的 SSE 事件流返回（message_start … message_stop）"
+          }
+        }
+      },
+      "AnthropicMessagesResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "消息 ID（msg_ 开头）"
+          },
+          "type": {
+            "type": "string",
+            "description": "固定为 `message`"
+          },
+          "role": {
+            "type": "string",
+            "description": "固定为 `assistant`"
+          },
+          "model": {
+            "type": "string",
+            "description": "请求的模型名"
+          },
+          "content": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnthropicContentBlock"
+            },
+            "description": "回复内容块"
+          },
+          "stop_reason": {
+            "type": "string",
+            "enum": [
+              "end_turn",
+              "max_tokens",
+              "refusal"
+            ],
+            "description": "结束原因"
+          },
+          "usage": {
+            "type": "object",
+            "properties": {
+              "input_tokens": {
+                "type": "integer",
+                "description": "输入 Token"
+              },
+              "output_tokens": {
+                "type": "integer",
+                "description": "输出 Token"
+              }
+            }
+          }
+        }
+      },
+      "AnthropicCountTokensResponse": {
+        "type": "object",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "估算的输入 Token 数"
+          }
+        }
+      },
+      "AnthropicError": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "固定为 `error`"
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "Anthropic 错误类型，如 `authentication_error`、`rate_limit_error`"
+              },
+              "message": {
+                "type": "string",
+                "description": "错误说明"
+              },
+              "code": {
+                "type": "string",
+                "description": "网关错误码，与 OpenAI 协议的 `code` 一致"
+              }
+            }
+          }
+        }
+      },
+      "GeminiPart": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "文本；inlineData / fileData 会转为占位符"
+          }
+        }
+      },
+      "GeminiContent": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "model"
+            ],
+            "description": "角色"
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GeminiPart"
+            },
+            "description": "内容片段"
+          }
+        }
+      },
+      "GeminiGenerateContentRequest": {
+        "type": "object",
+        "required": [
+          "contents"
+        ],
+        "properties": {
+          "contents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GeminiContent"
+            },
+            "description": "对话内容"
+          },
+          "systemInstruction": {
+            "$ref": "#/components/schemas/GeminiContent"
+          },
+          "generationConfig": {
+            "type": "object",
+            "properties": {
+              "temperature": {
+                "type": "number",
+                "description": "采样温度"
+              },
+              "topP": {
+                "type": "number",
+                "description": "核采样"
+              },
+              "maxOutputTokens": {
+                "type": "integer",
+                "description": "最大输出 Token 数"
+              }
+            }
+          }
+        }
+      },
+      "GeminiGenerateContentResponse": {
+        "type": "object",
+        "properties": {
+          "candidates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "content": {
+                  "$ref": "#/components/schemas/GeminiContent"
+                },
+                "finishReason": {
+                  "type": "string",
+                  "enum": [
+                    "STOP",
+                    "MAX_TOKENS",
+                    "SAFETY"
+                  ],
+                  "description": "结束原因"
+                }
+              }
+            },
+            "description": "候选回复"
+          },
+          "usageMetadata": {
+            "type": "object",
+            "properties": {
+              "promptTokenCount": {
+                "type": "integer",
+                "description": "输入 Token"
+              },
+              "candidatesTokenCount": {
+                "type": "integer",
+                "description": "输出 Token"
+              },
+              "totalTokenCount": {
+                "type": "integer",
+                "description": "合计"
+              }
+            }
+          },
+          "modelVersion": {
+            "type": "string",
+            "description": "请求的模型名"
+          },
+          "responseId": {
+            "type": "string",
+            "description": "响应 ID（同 X-Request-Id）"
+          }
+        }
+      },
+      "GeminiEmbedContentRequest": {
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "properties": {
+          "content": {
+            "$ref": "#/components/schemas/GeminiContent"
+          }
+        }
+      },
+      "GeminiEmbedContentResponse": {
+        "type": "object",
+        "properties": {
+          "embedding": {
+            "type": "object",
+            "properties": {
+              "values": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "description": "向量"
+              }
+            }
+          }
+        }
+      },
+      "GeminiError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "description": "HTTP 状态码"
+              },
+              "message": {
+                "type": "string",
+                "description": "错误说明"
+              },
+              "status": {
+                "type": "string",
+                "description": "google.rpc 状态，如 `UNAUTHENTICATED`、`RESOURCE_EXHAUSTED`"
+              },
+              "details": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "reason": {
+                      "type": "string",
+                      "description": "网关错误码"
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
     "responses": {
-      "BadRequest": { "description": "请求参数错误，或该模型未配置可用路由（`invalid_argument`）；提示词命中内容过滤规则时返回 `content_blocked`（未发送给厂商、不计费）", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": { "message": "invalid argument: no route configured for model \"foo\"", "type": "invalid_request_error", "code": "invalid_argument" } } } } },
-      "Unauthorized": { "description": "缺少、无效或未生效的 API Key（`missing_api_key` / `invalid_api_key` / `inactive_api_key`）", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": { "message": "Invalid API key", "type": "invalid_request_error", "code": "invalid_api_key" } } } } },
-      "BudgetExceeded": { "description": "该 Key 绑定的预算已耗尽（`budget_exceeded`），需追加预算", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": { "message": "Budget exceeded for this API key", "type": "budget_error", "code": "budget_exceeded" } } } } },
-      "Forbidden": { "description": "调用方 IP 不在该 Key 的 IP 白名单内（`ip_not_allowed`）、请求的模型不在该 Key 的可用模型中（`model_not_allowed`），或 Key 所属部门已停用（`department_disabled`）", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-      "RateLimited": { "description": "触发限流（`rate_limited`）：Key、模型或部门的 QPS / TPM 超过配额。请指数退避后重试，或申请提升配额", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": { "message": "Rate limit exceeded, please retry later", "type": "rate_limit_error", "code": "rate_limited" } } } } },
-      "Upstream": { "description": "所有候选厂商调用均失败（`upstream_error`），网关已自动尝试容灾切换", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-      "Unavailable": { "description": "暂无健康的候选模型（`no_healthy_candidate`），或服务数据库未就绪（`schema_not_ready`）", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+      "BadRequest": {
+        "description": "请求参数错误，或该模型未配置可用路由（`invalid_argument`）；提示词命中内容过滤规则时返回 `content_blocked`（未发送给厂商、不计费）",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": {
+                "message": "invalid argument: no route configured for model \"foo\"",
+                "type": "invalid_request_error",
+                "code": "invalid_argument"
+              }
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "缺少、无效或未生效的 API Key（`missing_api_key` / `invalid_api_key` / `inactive_api_key`）",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": {
+                "message": "Invalid API key",
+                "type": "invalid_request_error",
+                "code": "invalid_api_key"
+              }
+            }
+          }
+        }
+      },
+      "BudgetExceeded": {
+        "description": "该 Key 绑定的预算已耗尽（`budget_exceeded`），需追加预算",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": {
+                "message": "Budget exceeded for this API key",
+                "type": "budget_error",
+                "code": "budget_exceeded"
+              }
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "调用方 IP 不在该 Key 的 IP 白名单内（`ip_not_allowed`）、请求的模型不在该 Key 的可用模型中（`model_not_allowed`），或 Key 所属部门已停用（`department_disabled`）",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "触发限流（`rate_limited`）：Key、模型或部门的 QPS / TPM 超过配额。请指数退避后重试，或申请提升配额",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": {
+                "message": "Rate limit exceeded, please retry later",
+                "type": "rate_limit_error",
+                "code": "rate_limited"
+              }
+            }
+          }
+        }
+      },
+      "Upstream": {
+        "description": "所有候选厂商调用均失败（`upstream_error`），网关已自动尝试容灾切换",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Unavailable": {
+        "description": "暂无健康的候选模型（`no_healthy_candidate`），或服务数据库未就绪（`schema_not_ready`）",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "AnthropicUnauthorized": {
+        "description": "Key 缺失或无效（`authentication_error`）",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AnthropicError"
+            },
+            "example": {
+              "type": "error",
+              "error": {
+                "type": "authentication_error",
+                "message": "Invalid API key",
+                "code": "invalid_api_key"
+              }
+            }
+          }
+        }
+      },
+      "AnthropicBadRequest": {
+        "description": "请求参数错误或内容被拦截（`invalid_request_error`）",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AnthropicError"
+            },
+            "example": {
+              "type": "error",
+              "error": {
+                "type": "invalid_request_error",
+                "message": "model and messages are required",
+                "code": "invalid_argument"
+              }
+            }
+          }
+        }
+      },
+      "AnthropicRateLimited": {
+        "description": "触发限流（`rate_limit_error`），请指数退避重试",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AnthropicError"
+            },
+            "example": {
+              "type": "error",
+              "error": {
+                "type": "rate_limit_error",
+                "message": "Rate limit exceeded, please retry later",
+                "code": "rate_limited"
+              }
+            }
+          }
+        }
+      },
+      "AnthropicUpstream": {
+        "description": "所有候选供应商均调用失败（`api_error`）",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AnthropicError"
+            },
+            "example": {
+              "type": "error",
+              "error": {
+                "type": "api_error",
+                "message": "upstream provider error",
+                "code": "upstream_error"
+              }
+            }
+          }
+        }
+      },
+      "GeminiUnauthorized": {
+        "description": "Key 缺失或无效（`UNAUTHENTICATED`）",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/GeminiError"
+            },
+            "example": {
+              "error": {
+                "code": 401,
+                "message": "Invalid API key",
+                "status": "UNAUTHENTICATED",
+                "details": [
+                  {
+                    "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                    "reason": "invalid_api_key",
+                    "domain": "llm-gateway"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "GeminiBadRequest": {
+        "description": "请求参数错误或内容被拦截（`INVALID_ARGUMENT`）",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/GeminiError"
+            },
+            "example": {
+              "error": {
+                "code": 400,
+                "message": "contents is required",
+                "status": "INVALID_ARGUMENT",
+                "details": [
+                  {
+                    "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                    "reason": "missing_field",
+                    "domain": "llm-gateway"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "GeminiRateLimited": {
+        "description": "触发限流或预算耗尽（`RESOURCE_EXHAUSTED`）",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/GeminiError"
+            },
+            "example": {
+              "error": {
+                "code": 429,
+                "message": "Rate limit exceeded, please retry later",
+                "status": "RESOURCE_EXHAUSTED",
+                "details": [
+                  {
+                    "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                    "reason": "rate_limited",
+                    "domain": "llm-gateway"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "GeminiUpstream": {
+        "description": "所有候选供应商均调用失败（`UNAVAILABLE`）",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/GeminiError"
+            },
+            "example": {
+              "error": {
+                "code": 502,
+                "message": "upstream provider error",
+                "status": "UNAVAILABLE",
+                "details": [
+                  {
+                    "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                    "reason": "upstream_error",
+                    "domain": "llm-gateway"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

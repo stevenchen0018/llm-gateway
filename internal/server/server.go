@@ -18,6 +18,8 @@ import (
 	cbredis "github.com/stevenchen/llm-gateway/internal/adapter/circuitbreaker/redis"
 	clusterredis "github.com/stevenchen/llm-gateway/internal/adapter/cluster/redis"
 	"github.com/stevenchen/llm-gateway/internal/adapter/notifier"
+	"github.com/stevenchen/llm-gateway/internal/adapter/provider/anthropic"
+	"github.com/stevenchen/llm-gateway/internal/adapter/provider/gemini"
 	"github.com/stevenchen/llm-gateway/internal/adapter/provider/mock"
 	"github.com/stevenchen/llm-gateway/internal/adapter/provider/openaicompat"
 	rlredis "github.com/stevenchen/llm-gateway/internal/adapter/ratelimit/redis"
@@ -28,6 +30,7 @@ import (
 	"github.com/stevenchen/llm-gateway/internal/api/middleware"
 	"github.com/stevenchen/llm-gateway/internal/config"
 	"github.com/stevenchen/llm-gateway/internal/domain"
+	"github.com/stevenchen/llm-gateway/internal/pkg/response"
 	"github.com/stevenchen/llm-gateway/internal/service"
 	"github.com/stevenchen/llm-gateway/internal/transfer"
 )
@@ -43,6 +46,7 @@ type App struct {
 	Identity    *service.IdentityService
 	Log         *zap.Logger
 	Tasks       service.TaskGate
+	Tests       *service.ProviderTestService
 }
 
 // StartDigestScheduler runs the weekly usage/cost push (成本感知) until ctx is
@@ -94,6 +98,7 @@ type services struct {
 	reqLogs    *service.RequestLogService
 	reqWorker  *service.RequestLogWorker
 	vendors    *service.VendorService
+	tests      *service.ProviderTestService
 	transfers  *transfer.Registry
 	jobs       *transfer.Jobs
 }
@@ -126,7 +131,9 @@ func Build(cfg *config.Config, db *gorm.DB, rdb *redis.Client, log *zap.Logger) 
 	taskLock := clusterredis.NewTaskLock(rdb, nodeName)
 
 	// --- provider adapters + notifier --------------------------------------
-	clientRegistry := service.NewProviderClientRegistry(mock.NewClient(), openaicompat.NewClient())
+	clientRegistry := service.NewProviderClientRegistry(mock.NewClient(), openaicompat.NewClient()).
+		WithProtocol(domain.ProtocolAnthropic, anthropic.NewClient()).
+		WithProtocol(domain.ProtocolGemini, gemini.NewClient())
 	webhookNotifier := notifier.NewWebhookNotifier(cfg.Notifier.FeishuWebhookURL)
 
 	// --- services -----------------------------------------------------------
@@ -149,6 +156,9 @@ func Build(cfg *config.Config, db *gorm.DB, rdb *redis.Client, log *zap.Logger) 
 	filterSvc := service.NewContentFilterService(filterRepo, settingsSvc, alertSvc, log)
 	requestLogSvc := service.NewRequestLogService(requestLogRepo)
 	requestLogWorker := service.NewRequestLogWorker(cfg.Async.RequestLogBufferSize, requestLogRepo, settingsSvc, log).WithTaskGate(taskLock)
+
+	providerTestSvc := service.NewProviderTestService(postgres.NewProviderTestRepo(db), providerRepo, modelRepo,
+		clientRegistry, settingsRepo, alertSvc, taskLock, log)
 
 	usageWorker := service.NewAsyncUsageWorker(cfg.Async.UsageBufferSize, usageRepo, metricsRepo, budgetSvc, log)
 
@@ -173,6 +183,7 @@ func Build(cfg *config.Config, db *gorm.DB, rdb *redis.Client, log *zap.Logger) 
 		dashboard: dashboardSvc, alerts: alertSvc, platform: platformSvc, monitor: monitorSvc,
 		cost: costSvc, playground: playgroundSvc, identity: identitySvc, tenants: tenantSvc, depts: deptRepo,
 		settings: settingsSvc, filter: filterSvc, reqLogs: requestLogSvc, reqWorker: requestLogWorker, vendors: vendorSvc,
+		tests: providerTestSvc,
 		transfers: transfer.NewRegistry(transfer.Deps{
 			Depts: deptRepo, Tenants: tenantSvc, Identity: identitySvc, Platform: platformSvc, Market: marketSvc, Vendors: vendorSvc,
 			Keys: keySvc, Filter: filterSvc, Budgets: budgetSvc, Alerts: alertSvc, Dashboard: dashboardSvc, RequestLogs: requestLogSvc,
@@ -184,7 +195,7 @@ func Build(cfg *config.Config, db *gorm.DB, rdb *redis.Client, log *zap.Logger) 
 	}
 
 	return &App{Engine: engine, UsageWorker: usageWorker, RequestLogs: requestLogWorker, Filter: filterSvc,
-		Cost: costSvc, Identity: identitySvc, Log: log, Tasks: taskLock}
+		Cost: costSvc, Identity: identitySvc, Log: log, Tasks: taskLock, Tests: providerTestSvc}
 }
 
 func registerRoutes(r *gin.Engine, cfg *config.Config, sv *services) {
@@ -193,14 +204,26 @@ func registerRoutes(r *gin.Engine, cfg *config.Config, sv *services) {
 
 	// --- gateway business API (OpenAI-compatible) ---------------------------
 	gw := gatewayapi.NewHandler(sv.gateway, sv.market)
-	v1 := r.Group("/v1",
-		middleware.RequestCapture(sv.settings, sv.reqWorker, sv.filter), // request id + async request records
-		middleware.APIKeyAuth(sv.keys, sv.alerts))
+	capture := middleware.RequestCapture(sv.settings, sv.reqWorker, sv.filter) // request id + async request records
+	auth := middleware.APIKeyAuth(sv.keys, sv.alerts)
+	v1 := r.Group("/v1", capture, auth)
 	{
 		v1.POST("/chat/completions", gw.ChatCompletions)
 		v1.POST("/completions", gw.Completions)
 		v1.POST("/embeddings", gw.Embeddings)
 		v1.GET("/models", gw.ListModels)
+	}
+	// Anthropic Messages API (Anthropic SDK / Claude Code: base URL = gateway root)
+	anthropicAPI := r.Group("/v1", response.SetProtocol(response.ProtocolAnthropic), capture, auth)
+	{
+		anthropicAPI.POST("/messages", gw.Messages)
+		anthropicAPI.POST("/messages/count_tokens", gw.CountTokens)
+	}
+	// Gemini API (Google Gen AI SDK: base URL = gateway root)
+	geminiAPI := r.Group("/v1beta", response.SetProtocol(response.ProtocolGemini), capture, auth)
+	{
+		geminiAPI.GET("/models", gw.GeminiListModels)
+		geminiAPI.POST("/models/:action", gw.GeminiModels)
 	}
 
 	// --- API documentation (public: integrators need it before they have a console account)
@@ -210,6 +233,7 @@ func registerRoutes(r *gin.Engine, cfg *config.Config, sv *services) {
 	authHandler := adminapi.NewAuthHandler(sv.identity, sv.depts, cfg.JWT)
 	tenantHandler := adminapi.NewTenantHandler(sv.identity, sv.tenants)
 	providerHandler := adminapi.NewProviderHandler(sv.market)
+	providerTestHandler := adminapi.NewProviderTestHandler(sv.tests)
 	modelHandler := adminapi.NewModelHandler(sv.market)
 	routingHandler := adminapi.NewRoutingHandler(sv.routing, sv.keys)
 	keyHandler := adminapi.NewKeyHandler(sv.keys, sv.platform, sv.identity)
@@ -270,6 +294,15 @@ func registerRoutes(r *gin.Engine, cfg *config.Config, sv *services) {
 		p.GET("/providers/:id", providerHandler.Get)
 		super.POST("/providers", providerHandler.Create)
 		super.PUT("/providers/:id", providerHandler.Update)
+		// 供应商可用性测试与测试报告（真实调用供应商、产生少量费用：仅超级管理员可发起）
+		p.GET("/providers/:id/test-report", providerTestHandler.Report)
+		super.POST("/providers/:id/tests", providerTestHandler.Start)
+		p.GET("/provider-tests/overview", providerTestHandler.Overview)
+		p.GET("/provider-tests/runs", providerTestHandler.Runs)
+		p.GET("/provider-tests/runs/:id", providerTestHandler.Run)
+		super.POST("/provider-tests/run-all", providerTestHandler.StartAll)
+		p.GET("/provider-tests/schedule", providerTestHandler.Schedule)
+		super.PUT("/provider-tests/schedule", providerTestHandler.UpdateSchedule)
 		p.GET("/applications", platformHandler.ListApplications)
 		w.POST("/applications", platformHandler.CreateApplication)
 		w.PUT("/applications/:id", platformHandler.UpdateApplication)

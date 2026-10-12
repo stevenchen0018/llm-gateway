@@ -120,6 +120,8 @@ const baseURL = `${location.origin}/v1`
 const sampleModel = computed(() => openKey.value?.allowed_models?.[0] ?? 'deepseek-v3')
 const tool = ref('Cline')
 const KEY = 'sk-你的密钥'
+// Anthropic / Gemini SDKs and CLIs take the gateway root (they append /v1/messages, /v1beta/...)
+const rootURL = baseURL.replace(/\/v1$/, '')
 const esc = (v: string) => v.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
 const guides = computed(() => {
   // m is interpolated into v-html steps: escape it (model names are admin-editable)
@@ -131,8 +133,10 @@ const guides = computed(() => {
     { name: 'Cursor', steps: ['Cursor Settings → <b>Models</b> → 打开 <b>OpenAI API Key</b>，填入你的密钥', `展开 <b>Override OpenAI Base URL</b>，填 <code>${baseURL}</code>`, `在模型列表中 <b>Add model</b>：<code>${m}</code>，然后点击 Verify`], code: '' },
     { name: 'Codex CLI', steps: ['编辑 <code>~/.codex/config.toml</code>，并在 shell 中 <code>export LLMGW_API_KEY=你的密钥</code>'],
       code: `model = "${m}"\nmodel_provider = "llmgw"\n\n[model_providers.llmgw]\nname = "LLM Gateway"\nbase_url = "${baseURL}"\nenv_key = "LLMGW_API_KEY"\nwire_api = "chat"` },
-    { name: 'Claude Code', steps: ['Claude Code 使用 Anthropic 协议，需通过 OpenAI 协议转接工具接入，例如 <code>claude-code-router</code>（<code>npm i -g @musistudio/claude-code-router</code>）', '编辑 <code>~/.claude-code-router/config.json</code>，然后用 <code>ccr code</code> 启动'],
-      code: JSON.stringify({ Providers: [{ name: 'llmgw', api_base_url: `${baseURL}/chat/completions`, api_key: KEY, models: openKey.value?.allowed_models?.length ? openKey.value.allowed_models : [m] }], Router: { default: `llmgw,${m}` } }, null, 2) },
+    { name: 'Claude Code', steps: ['网关原生兼容 Anthropic 协议（<code>/v1/messages</code>），无需转接工具：设置以下环境变量后直接运行 <code>claude</code>', `<code>ANTHROPIC_MODEL</code> 可填可用模型中的任一名称（如 <code>${m}</code>），网关会自动转换为供应商的协议`, '注意：当前版本只转换文本对话，Claude Code 的工具调用（读写文件、执行命令）暂未支持，适合问答与代码解释；需要完整 Agent 能力时可先使用 Cline（其工具协议基于文本，不依赖函数调用）'],
+      code: `export ANTHROPIC_BASE_URL=${rootURL}\nexport ANTHROPIC_AUTH_TOKEN=${KEY}\nexport ANTHROPIC_MODEL=${sampleModel.value}\nexport ANTHROPIC_SMALL_FAST_MODEL=${sampleModel.value}\nclaude` },
+    { name: 'Gemini CLI', steps: ['网关兼容 Gemini 协议（<code>/v1beta/models/*</code>），设置环境变量后启动 Gemini CLI'],
+      code: `export GOOGLE_GEMINI_BASE_URL=${rootURL}\nexport GEMINI_API_KEY=${KEY}\ngemini -m ${sampleModel.value}` },
     { name: 'Aider', steps: ['命令行直接指定网关地址与模型'], code: `aider --openai-api-base ${baseURL} --openai-api-key ${KEY} --model openai/${m}` },
     { name: 'OpenAI SDK', steps: ['脚本或自研工具中使用官方 SDK，只需替换 base_url'],
       code: `from openai import OpenAI\n\nclient = OpenAI(base_url="${baseURL}", api_key="${KEY}")\nresp = client.chat.completions.create(model="${m}", messages=[{"role": "user", "content": "用 Go 写一个 LRU 缓存"}])\nprint(resp.choices[0].message.content)` },

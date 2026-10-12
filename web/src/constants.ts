@@ -108,3 +108,25 @@ export const STRATEGY_HINT = {
 
 // Budget approval routing (mirrors the backend default budget.director_limit).
 export const DIRECTOR_LIMIT = 10000
+
+// supplier wire protocols: the gateway converts its unified request to each
+export const PROTOCOL: Record<string, { text: string; tone: 'success' | 'warning' | 'primary' | 'info'; base: string; auth: string }> = {
+  openai: { text: 'OpenAI', tone: 'success', base: 'https://api.example.com/v1', auth: '按鉴权方式' },
+  anthropic: { text: 'Anthropic', tone: 'warning', base: 'https://api.anthropic.com', auth: 'x-api-key' },
+  gemini: { text: 'Gemini', tone: 'primary', base: 'https://generativelanguage.googleapis.com', auth: 'x-goog-api-key' },
+  mock: { text: 'Mock', tone: 'info', base: 'mock://name', auth: '无' },
+}
+
+// availability test vocabulary
+export const TEST_RUN_STATUS: Record<string, { text: string; tone: 'success' | 'warning' | 'danger' | 'primary' }> = {
+  running: { text: '测试中', tone: 'primary' },
+  success: { text: '全部通过', tone: 'success' },
+  partial: { text: '部分失败', tone: 'warning' },
+  failed: { text: '失败', tone: 'danger' },
+}
+export const TEST_TRIGGER: Record<string, string> = { manual: '手动', batch: '批量', scheduled: '定时巡检' }
+export const TEST_CHECK: Record<string, string> = { probe: '连通性 / 鉴权', chat: '对话调用', embedding: '向量调用' }
+export const TEST_ERROR: Record<string, string> = {
+  timeout: '超时', network: '网络不通', auth: '鉴权失败', not_found: '地址或模型不存在', rate_limited: '被限流',
+  upstream_5xx: '供应商服务异常', bad_request: '请求被拒绝', invalid_response: '响应异常', unsupported: '不支持',
+}

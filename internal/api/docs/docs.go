@@ -40,7 +40,52 @@ func OpenAPIHandler(c *gin.Context) {
 	for k, v := range parsed {
 		out[k] = v
 	}
-	out["servers"] = []map[string]string{{"url": scheme + "://" + host + "/v1", "description": "当前网关"}}
+	origin := scheme + "://" + host
+	out["servers"] = []map[string]string{{"url": origin + "/v1", "description": "当前网关"}}
+	out["paths"] = absoluteOpServers(parsed["paths"], origin)
 	c.Header("Cache-Control", "no-cache")
 	c.JSON(http.StatusOK, out)
+}
+
+// absoluteOpServers copies paths, turning relative operation-level servers
+// (the Gemini endpoints live under /v1beta) into absolute URLs on this host.
+func absoluteOpServers(paths any, origin string) any {
+	ps, ok := paths.(map[string]any)
+	if !ok {
+		return paths
+	}
+	out := make(map[string]any, len(ps))
+	for path, item := range ps {
+		ops, ok := item.(map[string]any)
+		if !ok {
+			out[path] = item
+			continue
+		}
+		copied := make(map[string]any, len(ops))
+		for method, op := range ops {
+			o, ok := op.(map[string]any)
+			servers, has := o["servers"].([]any)
+			if !ok || !has {
+				copied[method] = op
+				continue
+			}
+			oc := make(map[string]any, len(o))
+			for k, v := range o {
+				oc[k] = v
+			}
+			abs := make([]any, len(servers))
+			for i, sv := range servers {
+				m, _ := sv.(map[string]any)
+				u, _ := m["url"].(string)
+				if len(u) > 0 && u[0] == '/' {
+					u = origin + u
+				}
+				abs[i] = map[string]any{"url": u, "description": m["description"]}
+			}
+			oc["servers"] = abs
+			copied[method] = oc
+		}
+		out[path] = copied
+	}
+	return out
 }

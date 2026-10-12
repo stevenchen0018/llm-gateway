@@ -22,7 +22,7 @@ func nodeHeader(node string) gin.HandlerFunc {
 
 // apiPrefixes never fall back to the console's index.html: an unknown API
 // path must stay a JSON 404 rather than a 200 HTML page.
-var apiPrefixes = []string{"/v1/", "/admin/", "/metrics", "/openapi.json", "/healthz", "/readyz"}
+var apiPrefixes = []string{"/v1/", "/v1beta/", "/admin/", "/metrics", "/openapi.json", "/healthz", "/readyz"}
 
 // serveConsole serves the built console (web/dist) from root: real files
 // as-is (hashed /assets/* cached for a year) and every other GET path as

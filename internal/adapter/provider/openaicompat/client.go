@@ -9,15 +9,11 @@
 package openaicompat
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
-	"io"
 	"net/http"
-	"strings"
-	"time"
 
+	"github.com/stevenchen/llm-gateway/internal/adapter/provider/httpx"
 	"github.com/stevenchen/llm-gateway/internal/domain"
 )
 
@@ -26,7 +22,7 @@ type Client struct {
 }
 
 func NewClient() *Client {
-	return &Client{httpClient: &http.Client{Timeout: 120 * time.Second}}
+	return &Client{httpClient: httpx.NewClient()}
 }
 
 type chatRequestBody struct {
@@ -74,7 +70,7 @@ func (c *Client) ChatCompletion(ctx context.Context, target domain.CallTarget, r
 		return domain.ChatResponse{}, err
 	}
 	if out.Error != nil {
-		return domain.ChatResponse{}, fmt.Errorf("%w: %s", domain.ErrUpstream, out.Error.Message)
+		return domain.ChatResponse{}, &domain.UpstreamError{Status: http.StatusOK, Message: out.Error.Message}
 	}
 
 	return domain.ChatResponse{
@@ -91,51 +87,57 @@ func (c *Client) Embeddings(ctx context.Context, target domain.CallTarget, req d
 		return domain.EmbeddingsResponse{}, err
 	}
 	if out.Error != nil {
-		return domain.EmbeddingsResponse{}, fmt.Errorf("%w: %s", domain.ErrUpstream, out.Error.Message)
+		return domain.EmbeddingsResponse{}, &domain.UpstreamError{Status: http.StatusOK, Message: out.Error.Message}
 	}
 
 	return domain.EmbeddingsResponse{Model: target.Model.ModelKey, Data: out.Data, Usage: out.Usage}, nil
 }
 
 func (c *Client) post(ctx context.Context, provider domain.Provider, path string, reqBody, out any) error {
-	payload, err := json.Marshal(reqBody)
-	if err != nil {
-		return fmt.Errorf("marshal request: %w", err)
-	}
+	return httpx.Do(ctx, c.httpClient, http.MethodPost, httpx.JoinURL(provider.BaseURL, path), authHeaders(provider), reqBody, out, errorMessage)
+}
 
-	url := strings.TrimRight(provider.BaseURL, "/") + path
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
-	if err != nil {
-		return fmt.Errorf("build upstream request: %w", err)
+// ListModels implements domain.ProviderProber with GET /models: it checks
+// connectivity and the credential without spending tokens.
+func (c *Client) ListModels(ctx context.Context, provider domain.Provider) ([]string, error) {
+	var out struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	applyAuth(httpReq, provider)
+	if err := httpx.Do(ctx, c.httpClient, http.MethodGet, httpx.JoinURL(provider.BaseURL, "/models"), authHeaders(provider), nil, &out, errorMessage); err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(out.Data))
+	for _, m := range out.Data {
+		ids = append(ids, m.ID)
+	}
+	return ids, nil
+}
 
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return fmt.Errorf("%w: %v", domain.ErrUpstream, err)
+// errorMessage reads {"error":{"message":...}} (OpenAI error envelope).
+func errorMessage(raw []byte) string {
+	var e struct {
+		Error *upstreamError `json:"error"`
 	}
-	defer resp.Body.Close()
+	if json.Unmarshal(raw, &e) == nil && e.Error != nil {
+		return e.Error.Message
+	}
+	return ""
+}
 
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("read upstream response: %w", err)
-	}
-
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("%w: status %d: %s", domain.ErrUpstream, resp.StatusCode, string(respBody))
-	}
-	if err := json.Unmarshal(respBody, out); err != nil {
-		return fmt.Errorf("decode upstream response: %w", err)
+func authHeaders(provider domain.Provider) map[string]string {
+	switch provider.AuthType {
+	case "bearer":
+		return map[string]string{"Authorization": "Bearer " + provider.AuthValue}
+	case "api_key_header":
+		return map[string]string{"Api-Key": provider.AuthValue}
 	}
 	return nil
 }
 
 func applyAuth(req *http.Request, provider domain.Provider) {
-	switch provider.AuthType {
-	case "bearer":
-		req.Header.Set("Authorization", "Bearer "+provider.AuthValue)
-	case "api_key_header":
-		req.Header.Set("Api-Key", provider.AuthValue)
+	for k, v := range authHeaders(provider) {
+		req.Header.Set(k, v)
 	}
 }

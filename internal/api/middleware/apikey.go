@@ -26,10 +26,10 @@ const ctxAPIKey = "api_key"
 // server.trusted_proxies for how it is derived) matches an entry.
 func APIKeyAuth(keys *service.APIKeyService, alerts *service.AlertService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		header := c.GetHeader("Authorization")
-		secret, ok := strings.CutPrefix(header, "Bearer ")
-		if !ok || secret == "" {
-			response.GatewayError(c, http.StatusUnauthorized, "invalid_request_error", "missing_api_key", "Missing or malformed Authorization header")
+		secret := apiKeySecret(c)
+		if secret == "" {
+			response.GatewayError(c, http.StatusUnauthorized, "invalid_request_error", "missing_api_key",
+				"Missing API key: send Authorization: Bearer <key>, x-api-key or x-goog-api-key")
 			return
 		}
 
@@ -62,6 +62,21 @@ func APIKeyAuth(keys *service.APIKeyService, alerts *service.AlertService) gin.H
 		}
 		c.Next()
 	}
+}
+
+// apiKeySecret reads the gateway key from whichever header the client's SDK
+// uses: OpenAI (Authorization: Bearer), Anthropic (x-api-key) or Gemini
+// (x-goog-api-key, or the ?key= query parameter).
+func apiKeySecret(c *gin.Context) string {
+	if s, ok := strings.CutPrefix(c.GetHeader("Authorization"), "Bearer "); ok && strings.TrimSpace(s) != "" {
+		return strings.TrimSpace(s)
+	}
+	for _, h := range []string{"x-api-key", "x-goog-api-key"} {
+		if s := strings.TrimSpace(c.GetHeader(h)); s != "" {
+			return s
+		}
+	}
+	return strings.TrimSpace(c.Query("key"))
 }
 
 // APIKeyFromContext retrieves the authenticated key set by APIKeyAuth.

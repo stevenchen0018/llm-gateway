@@ -27,6 +27,7 @@ type CreateProviderRequest struct {
 	Code         string `json:"code" binding:"required"`
 	Name         string `json:"name" binding:"required"`
 	BaseURL      string `json:"base_url" binding:"required"`
+	Protocol     string `json:"protocol"` // openai (default) | anthropic | gemini
 	AuthType     string `json:"auth_type"`
 	AuthValue    string `json:"auth_value"`
 	DiscountRate string `json:"discount_rate"` // e.g. "0.85"; empty = no discount
@@ -38,6 +39,7 @@ type CreateProviderRequest struct {
 type UpdateProviderRequest struct {
 	Name         string  `json:"name"`
 	BaseURL      string  `json:"base_url"`
+	Protocol     string  `json:"protocol"`
 	AuthType     *string `json:"auth_type"`
 	AuthValue    string  `json:"auth_value"`
 	Status       string  `json:"status"`

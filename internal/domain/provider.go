@@ -9,6 +9,21 @@ import (
 
 type ProviderStatus string
 
+// Wire protocols a supplier's API can speak. The gateway converts its unified
+// request to the supplier's protocol, so callers using any inbound protocol
+// (OpenAI /v1/chat/completions, Anthropic /v1/messages, Gemini
+// /v1beta/models/*:generateContent) can be served by any supplier.
+const (
+	ProtocolOpenAI    = "openai"    // OpenAI Chat Completions (and every OpenAI-compatible API)
+	ProtocolAnthropic = "anthropic" // Anthropic Messages API
+	ProtocolGemini    = "gemini"    // Google Gemini generateContent API
+)
+
+// ValidProtocol reports whether p is a supported supplier protocol.
+func ValidProtocol(p string) bool {
+	return p == ProtocolOpenAI || p == ProtocolAnthropic || p == ProtocolGemini
+}
+
 const (
 	ProviderStatusActive   ProviderStatus = "active"
 	ProviderStatusDisabled ProviderStatus = "disabled"
@@ -25,6 +40,7 @@ type Provider struct {
 	Code      string         `json:"code"` // e.g. "openai", "baidu", "aliyun", "bytedance", "selfhosted"
 	Name      string         `json:"name"`
 	BaseURL   string         `json:"base_url"`
+	Protocol  string         `json:"protocol"`  // openai | anthropic | gemini
 	AuthType  string         `json:"auth_type"` // "bearer", "api_key_header", "none"
 	AuthValue string         `json:"-"`         // credential secret, never serialized
 	Status    ProviderStatus `json:"status"`

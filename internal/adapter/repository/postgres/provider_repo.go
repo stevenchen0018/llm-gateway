@@ -21,7 +21,7 @@ func toProviderRow(p *domain.Provider) *ProviderRow {
 		rate = decimal.NewFromInt(1)
 	}
 	return &ProviderRow{
-		ID: p.ID, Code: p.Code, Name: p.Name, BaseURL: p.BaseURL,
+		ID: p.ID, Code: p.Code, Name: p.Name, BaseURL: p.BaseURL, Protocol: protocol(p.Protocol),
 		AuthType: p.AuthType, AuthValue: p.AuthValue, Status: string(p.Status),
 		DiscountRate: rate, Description: p.Description, SupplierType: supplierType(p.SupplierType), Contact: p.Contact,
 	}
@@ -29,7 +29,7 @@ func toProviderRow(p *domain.Provider) *ProviderRow {
 
 func fromProviderRow(r *ProviderRow) *domain.Provider {
 	return &domain.Provider{
-		ID: r.ID, Code: r.Code, Name: r.Name, BaseURL: r.BaseURL,
+		ID: r.ID, Code: r.Code, Name: r.Name, BaseURL: r.BaseURL, Protocol: protocol(r.Protocol),
 		AuthType: r.AuthType, AuthValue: r.AuthValue, Status: domain.ProviderStatus(r.Status),
 		DiscountRate: r.DiscountRate, Description: r.Description, SupplierType: r.SupplierType, Contact: r.Contact,
 		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
@@ -42,6 +42,7 @@ func (r *ProviderRepo) Create(ctx context.Context, p *domain.Provider) error {
 		return fmt.Errorf("create provider: %w", err)
 	}
 	p.ID = row.ID
+	p.Protocol = row.Protocol
 	p.DiscountRate = row.DiscountRate
 	p.CreatedAt, p.UpdatedAt = row.CreatedAt, row.UpdatedAt
 	return nil
@@ -49,7 +50,7 @@ func (r *ProviderRepo) Create(ctx context.Context, p *domain.Provider) error {
 
 func (r *ProviderRepo) Update(ctx context.Context, p *domain.Provider) error {
 	if err := r.db.WithContext(ctx).Model(&ProviderRow{}).Where("id = ?", p.ID).
-		Select("name", "base_url", "auth_type", "auth_value", "status", "discount_rate", "description", "supplier_type", "contact").
+		Select("name", "base_url", "protocol", "auth_type", "auth_value", "status", "discount_rate", "description", "supplier_type", "contact").
 		Updates(toProviderRow(p)).Error; err != nil {
 		return fmt.Errorf("update provider: %w", err)
 	}
@@ -95,4 +96,11 @@ func supplierType(t string) string {
 		return domain.SupplierCloud
 	}
 	return t
+}
+
+func protocol(p string) string {
+	if p == "" {
+		return domain.ProtocolOpenAI
+	}
+	return p
 }

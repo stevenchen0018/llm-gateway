@@ -228,9 +228,10 @@ export interface RankInput {
   color?: string
   maxRows?: number
   seriesName: string
+  integer?: boolean // counts: no fractional ticks
 }
 
-export function buildRankOption({ rows, fmt, color = C.primary, maxRows = 12, seriesName }: RankInput) {
+export function buildRankOption({ rows, fmt, color = C.primary, maxRows = 12, seriesName, integer = false }: RankInput) {
   const sorted = [...rows].sort((a, b) => b.value - a.value)
   const data = [...sorted].reverse() // echarts draws the first category at the bottom
   const visible = Math.min(maxRows, data.length)
@@ -241,7 +242,7 @@ export function buildRankOption({ rows, fmt, color = C.primary, maxRows = 12, se
       ...tooltipBase, trigger: 'axis' as const, axisPointer: { type: 'shadow' as const, shadowStyle: { color: 'rgba(17,24,39,.04)' } },
       formatter: (p: { name: string; value: number }[]) => `<div style="color:${C.text2};margin-bottom:4px">${p[0].name}</div>` + tipRow(color, seriesName, fmt(p[0].value)),
     },
-    xAxis: { type: 'value' as const, axisLabel: { color: C.text2, fontSize: 11, formatter: (v: number) => (v >= 1000 ? compact(v) : String(v)) }, splitLine: { lineStyle: { color: C.grid } }, axisLine: { show: false } },
+    xAxis: { type: 'value' as const, minInterval: integer ? 1 : 0, axisLabel: { color: C.text2, fontSize: 11, formatter: (v: number) => (v >= 1000 ? compact(v) : String(v)) }, splitLine: { lineStyle: { color: C.grid } }, axisLine: { show: false } },
     yAxis: {
       type: 'category' as const, data: data.map((r) => r.name), axisTick: { show: false }, axisLine: { lineStyle: { color: C.axis } },
       axisLabel: { color: C.text2, fontSize: 11, width: 130, overflow: 'truncate' as const },

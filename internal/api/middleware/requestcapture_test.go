@@ -48,3 +48,17 @@ func TestTruncateBytesKeepsUTF8Valid(t *testing.T) {
 		}
 	}
 }
+
+func TestInspectBodyOtherProtocols(t *testing.T) {
+	cases := map[string]string{
+		`{"model":"claude","system":"sys","messages":[{"role":"user","content":[{"type":"text","text":"anthropic 提问"}]}]}`: "anthropic 提问",
+		`{"contents":[{"role":"user","parts":[{"text":"gemini 提问"}]},{"role":"model","parts":[{"text":"答"}]}]}`:            "gemini 提问",
+		`{"content":{"parts":[{"text":"向量文本"}]}}`:                                                                          "向量文本",
+		`{"requests":[{"content":{"parts":[{"text":"批量向量"}]}}]}`:                                                           "批量向量",
+	}
+	for body, want := range cases {
+		if _, got := inspectBody([]byte(body)); got != want {
+			t.Errorf("inspectBody(%s) preview = %q, want %q", body, got, want)
+		}
+	}
+}

@@ -13,6 +13,8 @@ const (
 	AlertTypeFailover AlertType = "failover" // routing candidate marked unhealthy
 	AlertTypeReport   AlertType = "report"   // weekly usage/cost digest
 	AlertTypeSecurity AlertType = "security" // IP whitelist denial, content filter block
+	// AlertTypeAvailability: a scheduled supplier availability test failed
+	AlertTypeAvailability AlertType = "availability"
 )
 
 type AlertLevel string

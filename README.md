@@ -177,6 +177,30 @@ make web-build     # 产物在 web/dist
 - 演示数据：DeepSeek 由 KubeAI 自建、华为云、阿里云、百度、官方与 OpenRouter 六家供应，按优先级路由；Anthropic 由 Bedrock / 官方 /
   OpenRouter 按 70/20/10 权重分流；OpenAI 的 OpenRouter 渠道处于停用（合规评估中）。
 
+## 多协议接入（OpenAI / Anthropic / Gemini）
+
+- **调用方协议**：同一个网关 Key 可用三种协议调用，均走同一套路由、限流、预算、内容过滤与计费：
+  - OpenAI：`/v1/chat/completions`、`/v1/completions`、`/v1/embeddings`、`/v1/models`（`Authorization: Bearer`）
+  - Anthropic：`/v1/messages`（含 `stream`）、`/v1/messages/count_tokens`（`x-api-key`）；SDK / Claude Code 的 base URL 为网关根地址
+  - Gemini：`/v1beta/models/{model}:generateContent`、`:streamGenerateContent`（`alt=sse` 或 JSON 数组流）、`:embedContent`、`:batchEmbedContents`、`:countTokens`、`GET /v1beta/models`（`x-goog-api-key` 或 `?key=`）
+  - 错误按各协议自己的格式返回，错误码（`code` / `reason`）三种协议一致。
+- **供应商协议**：供应商新增 `protocol` 字段（`openai` | `anthropic` | `gemini`），网关把统一请求转换为该协议
+  （`internal/adapter/provider/{openaicompat,anthropic,gemini}`），因此任意调用协议都能调用任意供应商的模型。
+  Anthropic / Gemini 供应商使用协议原生鉴权头（`x-api-key` / `x-goog-api-key`）。
+- 当前转换覆盖文本对话（system、多轮、流式、用量、结束原因）；工具调用与图片暂不做跨协议转换（以文字占位传递）。
+
+## 供应商可用性测试与测试报告
+
+- 「平台管理 · 供应商测试」与供应商列表的「测试 / 报告」：一次测试 = 连通性与鉴权探测（请求模型列表，不消耗 Token），
+  加上对每个选中模型的最小真实调用（对话 `max_tokens=32`，向量输入 `ping`，可设 1–5 轮与超时）。
+  图片 / 视频 / 语音 / 重排序模型不做自动测试；探测失败于网络、超时或鉴权时跳过模型调用。
+- 失败自动分类：超时、网络不通、鉴权失败、地址或模型不存在、被限流、供应商 5xx、请求被拒绝、响应异常。
+- 测试在后台运行并落库（`provider_test_runs` / `provider_test_results`），任意集群节点可查看进度；同一供应商不会并发测试。
+- 测试报告（7 / 14 / 30 天）：结论、可用率、平均 / P50 / P95 耗时、每日可用率与耗时趋势、各模型可用性、失败原因分布、测试记录与逐项明细，可下载 CSV。
+- 定时巡检（默认关闭）：由 master 节点按间隔测试全部启用的供应商，Redis 任务锁保证集群内只执行一次；未全部通过时写入告警中心（类型「可用性」）并推送飞书；测试历史按保留天数自动清理。
+- API：`POST /admin/v1/providers/:id/tests`、`GET /admin/v1/providers/:id/test-report?days=`、`GET /admin/v1/provider-tests/{overview,runs,runs/:id,schedule}`、
+  `POST /admin/v1/provider-tests/run-all`、`PUT /admin/v1/provider-tests/schedule`（发起测试与修改巡检仅超级管理员）。
+
 ## 批量导入导出
 
 - 控制台「平台管理 · 数据导入导出」汇总全部可导入导出的数据，各列表页右上角也有「导入 / 导出」按钮（导出按当前筛选条件）。

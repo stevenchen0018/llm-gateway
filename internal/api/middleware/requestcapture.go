@@ -57,6 +57,10 @@ func (w *captureWriter) WriteString(s string) (int, error) {
 // the call (bodies optional, bounded, optionally redacted) to the async
 // RequestLogWorker. It must run before APIKeyAuth so rejected calls from a
 // known key (e.g. IP whitelist) are recorded too.
+// CtxRequestModel is set by handlers whose model name is in the URL (the
+// Gemini API), since it is not in the request body.
+const CtxRequestModel = "gateway_request_model"
+
 func RequestCapture(settings *service.SettingsService, worker *service.RequestLogWorker, filter *service.ContentFilterService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
@@ -99,6 +103,9 @@ func RequestCapture(settings *service.SettingsService, worker *service.RequestLo
 			rec.ErrorCode, _ = v.(string)
 		}
 		rec.Model, rec.PromptPreview = inspectBody(reqBody)
+		if m := c.GetString(CtxRequestModel); m != "" {
+			rec.Model = truncateRunes(m, 120)
+		}
 
 		// the handler has finished: the trace now holds what the pipeline decided
 		rec.ModelID, rec.ProviderID = trace.ModelID, trace.ProviderID
@@ -156,6 +163,19 @@ func inspectBody(body []byte) (model, preview string) {
 		} `json:"messages"`
 		Prompt any `json:"prompt"`
 		Input  any `json:"input"`
+		// Gemini: contents[].parts[] (generateContent), content.parts (embedContent)
+		Contents []struct {
+			Role  string `json:"role"`
+			Parts any    `json:"parts"`
+		} `json:"contents"`
+		Content *struct {
+			Parts any `json:"parts"`
+		} `json:"content"`
+		Requests []struct { // batchEmbedContents
+			Content struct {
+				Parts any `json:"parts"`
+			} `json:"content"`
+		} `json:"requests"`
 	}
 	if json.Unmarshal(body, &b) != nil {
 		return "", ""
@@ -169,6 +189,17 @@ func inspectBody(body []byte) (model, preview string) {
 	}
 	if preview == "" && len(b.Messages) > 0 {
 		preview = textOf(b.Messages[len(b.Messages)-1].Content)
+	}
+	for i := len(b.Contents) - 1; i >= 0 && preview == ""; i-- {
+		if b.Contents[i].Role != "model" {
+			preview = textOf(b.Contents[i].Parts)
+		}
+	}
+	if preview == "" && b.Content != nil {
+		preview = textOf(b.Content.Parts)
+	}
+	if preview == "" && len(b.Requests) > 0 {
+		preview = textOf(b.Requests[0].Content.Parts)
 	}
 	if preview == "" {
 		preview = textOf(b.Prompt)

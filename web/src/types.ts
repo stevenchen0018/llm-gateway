@@ -6,6 +6,7 @@ export interface Provider {
   code: string
   name: string
   base_url: string
+  protocol: Protocol
   auth_type: string
   status: 'active' | 'disabled'
   discount_rate: string
@@ -180,7 +181,7 @@ export interface UsageSummary {
 
 export interface AlertEvent {
   id: number
-  type: 'quota' | 'budget' | 'failover' | 'report' | 'security'
+  type: 'quota' | 'budget' | 'failover' | 'report' | 'security' | 'availability'
   ref_id: number
   message: string
   level: 'info' | 'warning' | 'critical'
@@ -579,4 +580,99 @@ export interface TransferJob {
   message: string
   errors: ImportError[]
   created_at: string
+}
+
+// ---- supplier protocols & availability tests -----------------------------------
+export type Protocol = 'openai' | 'anthropic' | 'gemini'
+
+export interface ProviderTestResult {
+  id: number
+  run_id: number
+  provider_id: number
+  model_id?: number
+  model_key: string
+  check_type: 'probe' | 'chat' | 'embedding'
+  round: number
+  status: 'passed' | 'failed' | 'skipped'
+  latency_ms: number
+  http_status: number
+  prompt_tokens: number
+  completion_tokens: number
+  error_type: string
+  error_message: string
+  response_preview: string
+  created_at: string
+}
+
+export interface ProviderTestRun {
+  id: number
+  provider_id: number
+  trigger: 'manual' | 'batch' | 'scheduled'
+  operator: string
+  protocol: string
+  status: 'running' | 'success' | 'partial' | 'failed'
+  total: number
+  passed: number
+  failed: number
+  skipped: number
+  avg_latency_ms: number
+  p95_latency_ms: number
+  summary: string
+  started_at: string
+  finished_at?: string
+  results?: ProviderTestResult[]
+}
+
+export interface ModelTestStat {
+  model_id: number
+  model_key: string
+  check_type: string
+  checks: number
+  passed: number
+  failed: number
+  availability: number
+  avg_latency_ms: number
+  p95_latency_ms: number
+  last_status: string
+  last_error: string
+  last_at: string
+}
+
+export interface ProviderTestReport {
+  provider: Provider
+  days: number
+  runs: number
+  checks: number
+  passed: number
+  failed: number
+  availability: number
+  probe_passed: number
+  probe_failed: number
+  avg_latency_ms: number
+  p50_latency_ms: number
+  p95_latency_ms: number
+  last_run?: ProviderTestRun
+  models: ModelTestStat[]
+  errors: { type: string; label: string; count: number }[]
+  daily: { date: string; checks: number; passed: number; failed: number; availability: number; avg_latency_ms: number }[]
+  recent_runs: ProviderTestRun[]
+  generated_at: string
+}
+
+export interface ProviderTestOverview {
+  provider: Provider
+  last_run?: ProviderTestRun
+  checks: number
+  passed: number
+  availability: number
+  avg_latency_ms: number
+  p95_latency_ms: number
+}
+
+export interface ProviderTestSchedule {
+  enabled: boolean
+  interval_minutes: number
+  timeout_seconds: number
+  alert_on_failure: boolean
+  retention_days: number
 }

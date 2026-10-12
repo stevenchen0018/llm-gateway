@@ -173,24 +173,22 @@ func (h *Handler) Embeddings(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// ListModels mirrors OpenAI's GET /v1/models shape over the marketplace's
-// active models.
-func (h *Handler) ListModels(c *gin.Context) {
+type listedModel struct {
+	id, owner string
+	embedding bool
+}
+
+// allowedModels lists the routable model names this key may call: one entry
+// per model name (several suppliers may offer it), limited to the key's
+// allowlist; owner is the vendor that makes it.
+func (h *Handler) allowedModels(c *gin.Context) ([]listedModel, bool) {
 	models, err := h.market.ListMarket(c.Request.Context())
 	if err != nil {
 		response.GatewayError(c, http.StatusInternalServerError, "internal_error", "", "failed to list models")
-		return
+		return nil, false
 	}
-
-	type modelEntry struct {
-		ID      string `json:"id"`
-		Object  string `json:"object"`
-		OwnedBy string `json:"owned_by"`
-	}
-	// one entry per model name (several suppliers may offer it), limited to
-	// the key's allowlist; owned_by is the vendor that makes it
 	key := middleware.APIKeyFromContext(c)
-	data := make([]modelEntry, 0, len(models))
+	out := make([]listedModel, 0, len(models))
 	seen := map[string]bool{}
 	for _, m := range models {
 		if m.Status != domain.ModelStatusActive || m.Provider.Status != domain.ProviderStatusActive || !m.Supply.Active() ||
@@ -202,7 +200,39 @@ func (h *Handler) ListModels(c *gin.Context) {
 		if m.Vendor != nil {
 			owner = m.Vendor.Code
 		}
-		data = append(data, modelEntry{ID: m.DisplayName, Object: "model", OwnedBy: owner})
+		out = append(out, listedModel{id: m.DisplayName, owner: owner, embedding: m.Type == domain.ModelTypeEmbedding})
+	}
+	return out, true
+}
+
+// ListModels serves GET /v1/models in the OpenAI format, or in the Anthropic
+// format when the client sends the anthropic-version header (Anthropic SDKs
+// call the same path).
+func (h *Handler) ListModels(c *gin.Context) {
+	models, ok := h.allowedModels(c)
+	if !ok {
+		return
+	}
+	if c.GetHeader("anthropic-version") != "" {
+		data := make([]gin.H, 0, len(models))
+		for _, m := range models {
+			data = append(data, gin.H{"type": "model", "id": m.id, "display_name": m.id, "created_at": "2025-01-01T00:00:00Z"})
+		}
+		first, last := "", ""
+		if len(models) > 0 {
+			first, last = models[0].id, models[len(models)-1].id
+		}
+		c.JSON(http.StatusOK, gin.H{"data": data, "has_more": false, "first_id": first, "last_id": last})
+		return
+	}
+	type modelEntry struct {
+		ID      string `json:"id"`
+		Object  string `json:"object"`
+		OwnedBy string `json:"owned_by"`
+	}
+	data := make([]modelEntry, 0, len(models))
+	for _, m := range models {
+		data = append(data, modelEntry{ID: m.id, Object: "model", OwnedBy: m.owner})
 	}
 	c.JSON(http.StatusOK, gin.H{"object": "list", "data": data})
 }

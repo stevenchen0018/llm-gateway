@@ -45,6 +45,7 @@ const router = createRouter({
         route('applications', () => import('./views/platform/Applications.vue'), '应用管理', 'Grid'),
         route('vendors', () => import('./views/platform/Vendors.vue'), '厂商管理', 'Management'),
         route('providers', () => import('./views/platform/Providers.vue'), '供应商管理', 'Connection'),
+        route('provider-tests', () => import('./views/platform/ProviderTests.vue'), '供应商测试', 'DataAnalysis'),
         route('announcements', () => import('./views/platform/Announcements.vue'), '公告管理', 'Notification', 'super'),
         route('audit', () => import('./views/platform/AuditLogs.vue'), '审计日志', 'Tickets'),
         route('data', () => import('./views/platform/DataTransfer.vue'), '数据导入导出', 'Files'),
