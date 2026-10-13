@@ -89,6 +89,7 @@ func run() error {
 	app.UsageWorker.Start(workerCtx, cfg.Async.UsageWorkers)
 	app.RequestLogs.Start(workerCtx, isMaster)
 	app.Filter.StartHitFlusher(workerCtx, 10*time.Second) // additive counters: safe on every node
+	app.Params.StartHitFlusher(workerCtx, 30*time.Second)
 	if isMaster {
 		app.StartDigestScheduler(workerCtx, cfg.Digest)
 		app.Tests.StartScheduler(workerCtx) // supplier availability patrol + history purge

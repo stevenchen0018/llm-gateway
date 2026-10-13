@@ -161,14 +161,21 @@ func TestGatewayMasksPromptBeforeUpstreamAndBlocks(t *testing.T) {
 		t.Fatalf("trace not filled: id=%s %+v", resp.ID, trace)
 	}
 
+	// usage is recorded asynchronously: wait for the first call's record
+	for deadline := time.Now().Add(2 * time.Second); usage.len() < 1 && time.Now().Before(deadline); {
+		time.Sleep(5 * time.Millisecond)
+	}
 	before := usage.len()
+	if before != 1 {
+		t.Fatalf("the successful call should be billed once, got %d records", before)
+	}
 	_, err = gw.ChatCompletion(context.Background(), key, domain.ChatRequest{Model: "business-alias",
 		Messages: []domain.ChatMessage{{Role: "user", Content: "绝密文件"}}}, "127.0.0.1")
 	if !errors.Is(err, domain.ErrContentBlocked) {
 		t.Fatalf("expected ErrContentBlocked, got %v", err)
 	}
 	time.Sleep(50 * time.Millisecond)
-	if usage.len() != before+1 { // only the first (successful) call was billed
+	if usage.len() != before { // the blocked call added no usage record
 		t.Fatalf("a blocked request must never reach a vendor or be billed")
 	}
 }

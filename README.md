@@ -189,6 +189,24 @@ make web-build     # 产物在 web/dist
   Anthropic / Gemini 供应商使用协议原生鉴权头（`x-api-key` / `x-goog-api-key`）。
 - 当前转换覆盖文本对话（system、多轮、流式、用量、结束原因）；工具调用与图片暂不做跨协议转换（以文字占位传递）。
 
+## 接口参数适配（厂商参数变更兼容）
+
+厂商会调整接口参数，而且各渠道升级不同步：例如 OpenAI 新一代模型不再接受 `max_tokens`、改用 `max_completion_tokens`，
+而旧版 Azure、部分代理商仍只认 `max_tokens`。网关分三层处理（「平台管理 · 参数适配」）：
+
+1. **调用方无感**：`max_tokens` 与 `max_completion_tokens` 都可以传，统一为输出上限；其他 OpenAI 参数（`seed`、`stop`、
+   `response_format`、`reasoning_effort` 等新参数）原样透传给 OpenAI 协议的供应商，新参数不需要网关发版。
+2. **规则改写**：按 协议 / 供应商 / 模型（通配符）/ 接口 匹配，动作有 改名、去掉、强制设值、缺省值、数值范围，参数名支持
+   `a.b` 访问嵌套字段（如 Gemini 的 `generationConfig.maxOutputTokens`）。执行顺序由通用到具体：通用 → 协议 → 模型 →
+   供应商 → 供应商 + 模型 → 自动学习，越具体越后执行、可覆盖通用规则；内置预设「OpenAI 新一代模型：max_tokens →
+   max_completion_tokens」开箱即用。修改 10 秒内在所有节点生效，可在「规则预览」里查看某供应商 + 模型的改写结果。
+3. **自动适配**：供应商返回 400/422「参数不支持」（如 `Unsupported parameter: 'max_tokens' … Use 'max_completion_tokens'`、
+   `Unrecognized request argument supplied: max_completion_tokens`、`Unknown parameter`、`Extra inputs are not permitted`、
+   Gemini 的 `Unknown name "x" at 'generation_config'`）时，网关改名或去掉该参数后重试（每次调用最多 3 次），成功后为
+   该 **供应商 + 模型** 记录一条自动规则并发出「参数适配」告警，之后的调用一次就对；渠道日后升级、方向反转时，旧的自动规则会自动抵消。
+
+规则存于 `param_rules` 表；API：`GET/POST /admin/v1/param-rules`、`PUT/DELETE /admin/v1/param-rules/:id`、`POST /admin/v1/param-rules/preview`（修改仅超级管理员）。
+
 ## 供应商可用性测试与测试报告
 
 - 「平台管理 · 供应商测试」与供应商列表的「测试 / 报告」：一次测试 = 连通性与鉴权探测（请求模型列表，不消耗 Token），

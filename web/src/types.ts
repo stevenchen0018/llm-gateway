@@ -181,7 +181,7 @@ export interface UsageSummary {
 
 export interface AlertEvent {
   id: number
-  type: 'quota' | 'budget' | 'failover' | 'report' | 'security' | 'availability'
+  type: 'quota' | 'budget' | 'failover' | 'report' | 'security' | 'availability' | 'param'
   ref_id: number
   message: string
   level: 'info' | 'warning' | 'critical'
@@ -676,3 +676,26 @@ export interface ProviderTestSchedule {
   alert_on_failure: boolean
   retention_days: number
 }
+
+// ---- parameter compatibility rules (接口参数适配) -------------------------------------
+export type ParamActionType = 'rename' | 'drop' | 'set' | 'default' | 'clamp'
+export interface ParamAction { type: ParamActionType; field: string; to?: string; value?: unknown; min?: number | null; max?: number | null }
+export interface ParamRule {
+  id: number
+  name: string
+  enabled: boolean
+  source: 'builtin' | 'manual' | 'auto'
+  protocol: '' | Protocol
+  provider_id?: number | null
+  model_pattern: string
+  op: '' | 'chat' | 'embedding' | 'image' | 'video'
+  actions: ParamAction[]
+  priority: number
+  remark: string
+  hit_count: number
+  last_hit_at?: string | null
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+export interface ParamPreview { body: Record<string, unknown>; applied: string[]; rules: number[] }

@@ -19,6 +19,14 @@ import (
 
 type Client struct {
 	httpClient *http.Client
+	params     domain.ParamRewriter
+}
+
+// WithParams applies parameter compatibility rules (and their automatic
+// recovery) to every request this adapter sends.
+func (c *Client) WithParams(p domain.ParamRewriter) *Client {
+	c.params = p
+	return c
 }
 
 func NewClient() *Client {
@@ -65,8 +73,22 @@ func (c *Client) ChatCompletion(ctx context.Context, target domain.CallTarget, r
 		Temperature: req.Temperature, TopP: req.TopP, MaxTokens: req.MaxTokens,
 	}
 
+	m, err := httpx.ToMap(body)
+	if err != nil {
+		return domain.ChatResponse{}, err
+	}
+	// pass through the parameters the gateway does not model (seed, stop,
+	// response_format, reasoning_effort, ...); the modelled ones win
+	for k, v := range req.Extra {
+		if _, set := m[k]; !set {
+			var val any
+			if json.Unmarshal(v, &val) == nil {
+				m[k] = val
+			}
+		}
+	}
 	var out chatResponseBody
-	if err := c.post(ctx, target.Provider, "/chat/completions", body, &out); err != nil {
+	if err := c.send(ctx, target, domain.ParamOpChat, "/chat/completions", m, &out); err != nil {
 		return domain.ChatResponse{}, err
 	}
 	if out.Error != nil {
@@ -83,7 +105,7 @@ func (c *Client) Embeddings(ctx context.Context, target domain.CallTarget, req d
 	body := embeddingsRequestBody{Model: target.Model.ModelKey, Input: req.Input}
 
 	var out embeddingsResponseBody
-	if err := c.post(ctx, target.Provider, "/embeddings", body, &out); err != nil {
+	if err := c.post(ctx, target, domain.ParamOpEmbedding, "/embeddings", body, &out); err != nil {
 		return domain.EmbeddingsResponse{}, err
 	}
 	if out.Error != nil {
@@ -93,8 +115,20 @@ func (c *Client) Embeddings(ctx context.Context, target domain.CallTarget, req d
 	return domain.EmbeddingsResponse{Model: target.Model.ModelKey, Data: out.Data, Usage: out.Usage}, nil
 }
 
-func (c *Client) post(ctx context.Context, provider domain.Provider, path string, reqBody, out any) error {
-	return httpx.Do(ctx, c.httpClient, http.MethodPost, httpx.JoinURL(provider.BaseURL, path), authHeaders(provider), reqBody, out, errorMessage)
+// post sends a request struct to a model endpoint (see send).
+func (c *Client) post(ctx context.Context, target domain.CallTarget, op, path string, reqBody, out any) error {
+	m, err := httpx.ToMap(reqBody)
+	if err != nil {
+		return err
+	}
+	return c.send(ctx, target, op, path, m, out)
+}
+
+// send posts body after applying the parameter rules of the target
+// supplier/model, adapting and retrying once if a parameter is rejected.
+func (c *Client) send(ctx context.Context, target domain.CallTarget, op, path string, body map[string]any, out any) error {
+	return httpx.DoAdapted(ctx, c.httpClient, http.MethodPost, httpx.JoinURL(target.Provider.BaseURL, path), authHeaders(target.Provider),
+		body, out, errorMessage, httpx.Adapt{Params: c.params, Target: target, Op: op})
 }
 
 // ListModels implements domain.ProviderProber with GET /models: it checks

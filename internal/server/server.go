@@ -47,6 +47,7 @@ type App struct {
 	Log         *zap.Logger
 	Tasks       service.TaskGate
 	Tests       *service.ProviderTestService
+	Params      *service.ParamRuleService
 }
 
 // StartDigestScheduler runs the weekly usage/cost push (成本感知) until ctx is
@@ -99,6 +100,7 @@ type services struct {
 	reqWorker  *service.RequestLogWorker
 	vendors    *service.VendorService
 	tests      *service.ProviderTestService
+	params     *service.ParamRuleService
 	transfers  *transfer.Registry
 	jobs       *transfer.Jobs
 }
@@ -131,13 +133,14 @@ func Build(cfg *config.Config, db *gorm.DB, rdb *redis.Client, log *zap.Logger) 
 	taskLock := clusterredis.NewTaskLock(rdb, nodeName)
 
 	// --- provider adapters + notifier --------------------------------------
-	clientRegistry := service.NewProviderClientRegistry(mock.NewClient(), openaicompat.NewClient()).
-		WithProtocol(domain.ProtocolAnthropic, anthropic.NewClient()).
-		WithProtocol(domain.ProtocolGemini, gemini.NewClient())
-	webhookNotifier := notifier.NewWebhookNotifier(cfg.Notifier.FeishuWebhookURL)
+	// parameter compatibility rules (接口参数适配) apply to every protocol adapter
+	alertSvc := service.NewAlertService(alertRepo, notifier.NewWebhookNotifier(cfg.Notifier.FeishuWebhookURL), log)
+	paramRules := service.NewParamRuleService(postgres.NewParamRuleRepo(db), alertSvc, log)
+	clientRegistry := service.NewProviderClientRegistry(mock.NewClient(), openaicompat.NewClient().WithParams(paramRules)).
+		WithProtocol(domain.ProtocolAnthropic, anthropic.NewClient().WithParams(paramRules)).
+		WithProtocol(domain.ProtocolGemini, gemini.NewClient().WithParams(paramRules))
 
 	// --- services -----------------------------------------------------------
-	alertSvc := service.NewAlertService(alertRepo, webhookNotifier, log)
 	budgetSvc := service.NewBudgetService(budgetRepo, alertSvc, cfg.Budget.DirectorLimit)
 	vendorSvc := service.NewVendorService(vendorRepo, providerRepo, modelRepo)
 	marketSvc := service.NewModelMarketService(providerRepo, modelRepo, clientRegistry).WithVendors(vendorSvc)
@@ -183,7 +186,7 @@ func Build(cfg *config.Config, db *gorm.DB, rdb *redis.Client, log *zap.Logger) 
 		dashboard: dashboardSvc, alerts: alertSvc, platform: platformSvc, monitor: monitorSvc,
 		cost: costSvc, playground: playgroundSvc, identity: identitySvc, tenants: tenantSvc, depts: deptRepo,
 		settings: settingsSvc, filter: filterSvc, reqLogs: requestLogSvc, reqWorker: requestLogWorker, vendors: vendorSvc,
-		tests: providerTestSvc,
+		tests: providerTestSvc, params: paramRules,
 		transfers: transfer.NewRegistry(transfer.Deps{
 			Depts: deptRepo, Tenants: tenantSvc, Identity: identitySvc, Platform: platformSvc, Market: marketSvc, Vendors: vendorSvc,
 			Keys: keySvc, Filter: filterSvc, Budgets: budgetSvc, Alerts: alertSvc, Dashboard: dashboardSvc, RequestLogs: requestLogSvc,
@@ -195,7 +198,7 @@ func Build(cfg *config.Config, db *gorm.DB, rdb *redis.Client, log *zap.Logger) 
 	}
 
 	return &App{Engine: engine, UsageWorker: usageWorker, RequestLogs: requestLogWorker, Filter: filterSvc,
-		Cost: costSvc, Identity: identitySvc, Log: log, Tasks: taskLock, Tests: providerTestSvc}
+		Cost: costSvc, Identity: identitySvc, Log: log, Tasks: taskLock, Tests: providerTestSvc, Params: paramRules}
 }
 
 func registerRoutes(r *gin.Engine, cfg *config.Config, sv *services) {
@@ -234,6 +237,7 @@ func registerRoutes(r *gin.Engine, cfg *config.Config, sv *services) {
 	tenantHandler := adminapi.NewTenantHandler(sv.identity, sv.tenants)
 	providerHandler := adminapi.NewProviderHandler(sv.market)
 	providerTestHandler := adminapi.NewProviderTestHandler(sv.tests)
+	paramRuleHandler := adminapi.NewParamRuleHandler(sv.params, sv.market)
 	modelHandler := adminapi.NewModelHandler(sv.market)
 	routingHandler := adminapi.NewRoutingHandler(sv.routing, sv.keys)
 	keyHandler := adminapi.NewKeyHandler(sv.keys, sv.platform, sv.identity)
@@ -303,6 +307,12 @@ func registerRoutes(r *gin.Engine, cfg *config.Config, sv *services) {
 		super.POST("/provider-tests/run-all", providerTestHandler.StartAll)
 		p.GET("/provider-tests/schedule", providerTestHandler.Schedule)
 		super.PUT("/provider-tests/schedule", providerTestHandler.UpdateSchedule)
+		// 接口参数适配规则
+		p.GET("/param-rules", paramRuleHandler.List)
+		p.POST("/param-rules/preview", paramRuleHandler.Preview)
+		super.POST("/param-rules", paramRuleHandler.Create)
+		super.PUT("/param-rules/:id", paramRuleHandler.Update)
+		super.DELETE("/param-rules/:id", paramRuleHandler.Delete)
 		p.GET("/applications", platformHandler.ListApplications)
 		w.POST("/applications", platformHandler.CreateApplication)
 		w.PUT("/applications/:id", platformHandler.UpdateApplication)

@@ -43,7 +43,7 @@
       </Panel>
     </div>
 
-    <Panel title="编码工具接入指引" sub="网关兼容 OpenAI 协议；把下面的地址与密钥配置到编码工具即可，模型名使用「可用模型」中的名称" class="guide">
+    <Panel title="编码工具接入指引" sub="网关兼容 OpenAI、Anthropic、Gemini 三种协议；把下面的地址与密钥配置到编码工具即可，模型名使用「可用模型」中的名称" class="guide">
       <div class="base">
         <span class="lab">Base URL</span><code class="mono">{{ baseURL }}</code><el-button link :icon="CopyDocument" @click="copy(baseURL)" />
         <span class="lab" style="margin-left: 16px">模型示例</span><code class="mono">{{ sampleModel }}</code>
@@ -62,8 +62,9 @@
 </template>
 
 <script setup lang="ts">
+import { copyText } from '../../composables/clipboard'
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessageBox } from 'element-plus'
 import { CopyDocument, Key, Plus, RefreshRight } from '@element-plus/icons-vue'
 import PageHeader from '../../components/PageHeader.vue'
 import Panel from '../../components/Panel.vue'
@@ -113,7 +114,7 @@ async function rotate(k: ApiKey) {
   busy.value = k.id
   try { const r = await keys.rotate(k.id); secret.value = r.secret ?? ''; await load() } finally { busy.value = undefined }
 }
-async function copy(s: string) { await navigator.clipboard.writeText(s); ElMessage.success('已复制') }
+const copy = (s: string) => copyText(s)
 
 // ---- integration guides --------------------------------------------------------------------
 const baseURL = `${location.origin}/v1`

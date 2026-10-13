@@ -49,7 +49,7 @@
         ],
         "operationId": "createChatCompletion",
         "summary": "创建对话补全",
-        "description": "根据消息列表生成回复。`model` 可以是模型名（如 `deepseek-r1`），也可以是 `供应商/模型`（如 `aliyun/deepseek-r1`）固定调用渠道、或 `厂商/模型` 限定模型厂商；同一模型由多家供应商提供时，按该 Key 命中的调度策略或厂商的供应商选择方式路由，失败自动切换到下一家供应商。Key 设置了可用模型时，名单外的模型返回 403 `model_not_allowed`。",
+        "description": "根据消息列表生成回复。`model` 可以是模型名（如 `deepseek-r1`），也可以是 `供应商/模型`（如 `aliyun/deepseek-r1`）固定调用渠道、或 `厂商/模型` 限定模型厂商；同一模型由多家供应商提供时，按该 Key 命中的调度策略或厂商的供应商选择方式路由，失败自动切换到下一家供应商。Key 设置了可用模型时，名单外的模型返回 403 `model_not_allowed`。\n\n其他 OpenAI 参数（如 `seed`、`stop`、`response_format`、`reasoning_effort`）会原样透传给 OpenAI 协议的供应商；供应商不支持某个参数时，网关会自动去掉或改名后重试并记录。`tools` / `tool_choice` 暂不支持。",
         "requestBody": {
           "required": true,
           "content": {
@@ -883,12 +883,17 @@
           "max_tokens": {
             "type": "integer",
             "minimum": 1,
-            "description": "最大输出 Token 数；同时用于 TPM 预占，建议按实际需要设置"
+            "description": "最大输出 Token 数；同时用于 TPM 预占，建议按实际需要设置。也可使用 OpenAI 新参数名 `max_completion_tokens`，两者等价；网关会按供应商与模型自动转换为对方接受的参数名（见控制台「接口参数适配」）"
           },
           "stream": {
             "type": "boolean",
             "default": false,
             "description": "为 true 时以 SSE（`text/event-stream`，`chat.completion.chunk` + `data: [DONE]`）返回，兼容 IDE 编码助手与 OpenAI SDK 的流式调用；网关在拿到完整回复后分块推送，末块携带 usage"
+          },
+          "max_completion_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "与 `max_tokens` 等价（OpenAI 新一代模型使用的名称），两者传一个即可"
           }
         }
       },

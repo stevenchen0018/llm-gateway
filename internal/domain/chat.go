@@ -62,8 +62,54 @@ type ChatRequest struct {
 	Messages    []ChatMessage `json:"messages"`
 	Temperature *float64      `json:"temperature,omitempty"`
 	TopP        *float64      `json:"top_p,omitempty"`
-	MaxTokens   *int          `json:"max_tokens,omitempty"`
-	Stream      bool          `json:"stream,omitempty"`
+	// MaxTokens is the output limit whatever the client called it
+	// (max_tokens, or OpenAI's newer max_completion_tokens); the name sent to
+	// a supplier is decided per supplier/model by the parameter rules.
+	MaxTokens *int `json:"max_tokens,omitempty"`
+	Stream    bool `json:"stream,omitempty"`
+	// Extra holds other OpenAI-protocol parameters the gateway does not model
+	// (seed, stop, response_format, reasoning_effort, ...). They are passed
+	// through unchanged to OpenAI-protocol suppliers, so new upstream
+	// parameters work without a gateway release; parameter rules can rename
+	// or drop them per supplier.
+	Extra map[string]json.RawMessage `json:"-"`
+}
+
+// chatKnownFields are modelled by ChatRequest; chatDroppedFields are not
+// passed through because the gateway cannot honour them end to end (tool
+// calls and multiple choices are not carried back in the unified response).
+var (
+	chatKnownFields   = map[string]bool{"model": true, "messages": true, "temperature": true, "top_p": true, "max_tokens": true, "max_completion_tokens": true, "stream": true}
+	chatDroppedFields = map[string]bool{"stream_options": true, "tools": true, "tool_choice": true, "functions": true, "function_call": true, "parallel_tool_calls": true, "n": true}
+)
+
+func (r *ChatRequest) UnmarshalJSON(b []byte) error {
+	type plain ChatRequest
+	var in struct {
+		plain
+		MaxCompletionTokens *int `json:"max_completion_tokens"`
+	}
+	if err := json.Unmarshal(b, &in); err != nil {
+		return err
+	}
+	*r = ChatRequest(in.plain)
+	if r.MaxTokens == nil {
+		r.MaxTokens = in.MaxCompletionTokens
+	}
+	var all map[string]json.RawMessage
+	if err := json.Unmarshal(b, &all); err != nil {
+		return err
+	}
+	for k, v := range all {
+		if chatKnownFields[k] || chatDroppedFields[k] {
+			continue
+		}
+		if r.Extra == nil {
+			r.Extra = map[string]json.RawMessage{}
+		}
+		r.Extra[k] = v
+	}
+	return nil
 }
 
 type Usage struct {

@@ -46,8 +46,8 @@
 </template>
 
 <script setup lang="ts">
+import { copyText } from '../composables/clipboard'
 import { computed, h, ref, watch, type FunctionalComponent } from 'vue'
-import { ElMessage } from 'element-plus'
 import { CopyDocument } from '@element-plus/icons-vue'
 import StatusBadge from './StatusBadge.vue'
 import EmptyState from './EmptyState.vue'
@@ -100,7 +100,7 @@ const dialog = computed(() => {
   return out
 })
 
-async function copy(s: string) { await navigator.clipboard.writeText(s); ElMessage.success('已复制') }
+const copy = (s: string) => copyText(s)
 
 const CodeBlock: FunctionalComponent<{ text: string; empty: string }> = (p) =>
   p.text

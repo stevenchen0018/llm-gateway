@@ -10,13 +10,13 @@
 </template>
 
 <script setup lang="ts">
+import { copyText } from '../composables/clipboard'
 // SecretDialog shows a freshly issued API key secret exactly once.
-import { ElMessage } from 'element-plus'
 import { CopyDocument } from '@element-plus/icons-vue'
 
 const props = withDefaults(defineProps<{ secret: string; title?: string }>(), { title: 'Key 已分发' })
 defineEmits<{ close: [] }>()
-async function copy() { await navigator.clipboard.writeText(props.secret); ElMessage.success('已复制') }
+const copy = () => copyText(props.secret)
 </script>
 
 <style scoped>

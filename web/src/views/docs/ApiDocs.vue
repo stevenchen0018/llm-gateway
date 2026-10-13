@@ -152,6 +152,7 @@
 </template>
 
 <script setup lang="ts">
+import { copyText } from '../../composables/clipboard'
 import { computed, defineComponent, h, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Download, Key, Promotion, VideoPlay } from '@element-plus/icons-vue'
@@ -275,7 +276,7 @@ function md(s: string) {
   const esc = s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   return esc.replace(/`([^`]+)`/g, '<code>$1</code>')
 }
-async function copy(text: string) { await navigator.clipboard.writeText(text); ElMessage.success('已复制') }
+function copy(text: string) { return copyText(text) }
 function openSpec() { window.open('/openapi.json', '_blank') }
 
 // ---- try it ------------------------------------------------------------------------------

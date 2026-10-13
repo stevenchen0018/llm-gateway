@@ -91,3 +91,64 @@ func truncate(s string, n int) string {
 	}
 	return s[:n] + "…"
 }
+
+// maxParamRecoveries bounds how many rejected parameters one call fixes
+// (each fix costs a round trip).
+const maxParamRecoveries = 3
+
+// Adapt describes the call for parameter compatibility handling.
+type Adapt struct {
+	Params domain.ParamRewriter // nil = send the body as built
+	Target domain.CallTarget
+	Op     string // domain.ParamOp*
+}
+
+// ToMap turns a request struct into a JSON object map rules can edit
+// (numbers stay json.Number so integers are re-encoded exactly).
+func ToMap(body any) (map[string]any, error) {
+	b, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+	var m map[string]any
+	d := json.NewDecoder(bytes.NewReader(b))
+	d.UseNumber()
+	if err := d.Decode(&m); err != nil {
+		return nil, fmt.Errorf("request body is not a JSON object: %w", err)
+	}
+	return m, nil
+}
+
+// DoAdapted is Do for model calls: the body is rewritten by the parameter
+// rules of the target supplier/model before sending, and when the supplier
+// rejects a parameter (400/422) the body is adapted and the call retried; a
+// retry that then succeeds is reported back so the fix is learned.
+func DoAdapted(ctx context.Context, c *http.Client, method, url string, headers map[string]string, body map[string]any, out any,
+	errMessage func([]byte) string, a Adapt) error {
+	if a.Params != nil {
+		a.Params.Rewrite(ctx, a.Target, a.Op, body)
+	}
+	var learned []domain.ParamAction
+	cause := ""
+	for attempt := 0; ; attempt++ {
+		err := Do(ctx, c, method, url, headers, body, out, errMessage)
+		var ue *domain.UpstreamError
+		if err == nil {
+			if len(learned) > 0 {
+				a.Params.Learned(ctx, a.Target, a.Op, learned, cause)
+			}
+			return nil
+		}
+		if a.Params == nil || attempt >= maxParamRecoveries || !errors.As(err, &ue) {
+			return err
+		}
+		fix := a.Params.Recover(ctx, a.Target, a.Op, body, ue)
+		if len(fix) == 0 {
+			return err
+		}
+		learned = append(learned, fix...)
+		if cause == "" {
+			cause = truncate(ue.Message, 200)
+		}
+	}
+}

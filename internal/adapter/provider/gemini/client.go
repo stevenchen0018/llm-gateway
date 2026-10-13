@@ -19,9 +19,27 @@ import (
 
 type Client struct {
 	httpClient *http.Client
+	params     domain.ParamRewriter
 }
 
 func NewClient() *Client { return &Client{httpClient: httpx.NewClient()} }
+
+// WithParams applies parameter compatibility rules (and their automatic
+// recovery) to every request this adapter sends.
+func (c *Client) WithParams(p domain.ParamRewriter) *Client {
+	c.params = p
+	return c
+}
+
+// send posts a request struct after applying the target's parameter rules.
+func (c *Client) send(ctx context.Context, target domain.CallTarget, op, url string, body, out any) error {
+	m, err := httpx.ToMap(body)
+	if err != nil {
+		return err
+	}
+	return httpx.DoAdapted(ctx, c.httpClient, http.MethodPost, url, headers(target.Provider), m, out, errorMessage,
+		httpx.Adapt{Params: c.params, Target: target, Op: op})
+}
 
 // Part is one piece of a Gemini Content; Thought marks reasoning output.
 type Part struct {
@@ -126,8 +144,7 @@ func (c *Client) ChatCompletion(ctx context.Context, target domain.CallTarget, r
 	}
 
 	var out generateResponse
-	if err := httpx.Do(ctx, c.httpClient, http.MethodPost, modelURL(target.Provider.BaseURL, target.Model.ModelKey, "generateContent"),
-		headers(target.Provider), body, &out, errorMessage); err != nil {
+	if err := c.send(ctx, target, domain.ParamOpChat, modelURL(target.Provider.BaseURL, target.Model.ModelKey, "generateContent"), body, &out); err != nil {
 		return domain.ChatResponse{}, err
 	}
 	if len(out.Candidates) == 0 {
@@ -181,8 +198,7 @@ func (c *Client) Embeddings(ctx context.Context, target domain.CallTarget, req d
 			Values []float32 `json:"values"`
 		} `json:"embeddings"`
 	}
-	if err := httpx.Do(ctx, c.httpClient, http.MethodPost, modelURL(target.Provider.BaseURL, target.Model.ModelKey, "batchEmbedContents"),
-		headers(target.Provider), body, &out, errorMessage); err != nil {
+	if err := c.send(ctx, target, domain.ParamOpEmbedding, modelURL(target.Provider.BaseURL, target.Model.ModelKey, "batchEmbedContents"), body, &out); err != nil {
 		return domain.EmbeddingsResponse{}, err
 	}
 	data := make([]domain.EmbeddingData, len(out.Embeddings))

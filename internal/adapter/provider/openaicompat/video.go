@@ -81,7 +81,7 @@ func (c *Client) SubmitVideo(ctx context.Context, target domain.CallTarget, req 
 		body["input_reference"] = req.Image
 	}
 	var out videoJob
-	if err := c.post(ctx, target.Provider, "/videos", body, &out); err != nil {
+	if err := c.post(ctx, target, domain.ParamOpVideo, "/videos", body, &out); err != nil {
 		return domain.VideoTask{}, err
 	}
 	if out.Error != nil && out.ID == "" {

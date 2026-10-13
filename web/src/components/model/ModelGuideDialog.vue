@@ -20,8 +20,8 @@
 </template>
 
 <script setup lang="ts">
+import { copyText } from '../../composables/clipboard'
 import { computed, ref } from 'vue'
-import { ElMessage } from 'element-plus'
 import { CopyDocument } from '@element-plus/icons-vue'
 import type { Model } from '../../types'
 
@@ -46,10 +46,7 @@ const snippet = computed(() => {
   return `curl ${baseUrl.value}/chat/completions \\\n  -H "Authorization: Bearer sk-..." \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "${model}",\n    "messages": [{"role": "user", "content": "你好"}]\n  }'`
 })
 
-async function copy(text: string) {
-  await navigator.clipboard.writeText(text)
-  ElMessage.success('已复制')
-}
+const copy = (text: string) => copyText(text)
 </script>
 
 <style scoped>

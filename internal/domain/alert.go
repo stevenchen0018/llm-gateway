@@ -15,6 +15,9 @@ const (
 	AlertTypeSecurity AlertType = "security" // IP whitelist denial, content filter block
 	// AlertTypeAvailability: a scheduled supplier availability test failed
 	AlertTypeAvailability AlertType = "availability"
+	// AlertTypeParam: a supplier rejected a request parameter and the gateway
+	// learned a parameter compatibility rule (接口参数适配)
+	AlertTypeParam AlertType = "param"
 )
 
 type AlertLevel string

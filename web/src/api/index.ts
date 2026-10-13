@@ -2,7 +2,7 @@ import http, { TOKEN_KEY, getDeptScope } from './http'
 import type {
   AdminUser, AlertEvent, Vendor, VendorSupplier, VendorView, Announcement, DepartmentView, Me, Application, ApiKey, AuditLog, Budget, CapacityView, CategoryBoard, ChatResult,
   BudgetSummary, DigestItem, ImportResult, TransferEntity, TransferJob, FilterRule, PageParams, PageResult, FilterTestResult, GatewaySettings, ImageResult, RequestLog, VideoTask, Model, OverviewRow, Provider, RankRow, Route, RouteTrace, SeriesResult, Suggestion,
-  UsageLog, UsageSummary, ProviderTestRun, ProviderTestReport, ProviderTestOverview, ProviderTestSchedule,
+  UsageLog, UsageSummary, ProviderTestRun, ProviderTestReport, ProviderTestOverview, ProviderTestSchedule, ParamRule, ParamPreview,
 } from '../types'
 
 // Go serializes nil slices as null; normalise list responses to [].
@@ -227,4 +227,13 @@ export const providerTests = {
   overview: (days = 7) => list<ProviderTestOverview>(http.get('/admin/v1/provider-tests/overview', { params: { days } })),
   schedule: () => one<ProviderTestSchedule>(http.get('/admin/v1/provider-tests/schedule')),
   saveSchedule: (s: ProviderTestSchedule) => one<ProviderTestSchedule>(http.put('/admin/v1/provider-tests/schedule', s)),
+}
+
+// parameter compatibility rules (接口参数适配)
+export const paramRules = {
+  list: (p: { source?: string; protocol?: string; q?: string } = {}) => list<ParamRule>(http.get('/admin/v1/param-rules', { params: clean(p) })),
+  create: (b: object) => one<ParamRule>(http.post('/admin/v1/param-rules', b)),
+  update: (id: number, b: object) => one<ParamRule>(http.put(`/admin/v1/param-rules/${id}`, b)),
+  remove: (id: number) => http.delete(`/admin/v1/param-rules/${id}`),
+  preview: (b: { provider_id: number; model: string; op?: string; body: object }) => one<ParamPreview>(http.post('/admin/v1/param-rules/preview', b)),
 }

@@ -24,9 +24,27 @@ const defaultMaxTokens = 4096
 
 type Client struct {
 	httpClient *http.Client
+	params     domain.ParamRewriter
 }
 
 func NewClient() *Client { return &Client{httpClient: httpx.NewClient()} }
+
+// WithParams applies parameter compatibility rules (and their automatic
+// recovery) to every request this adapter sends.
+func (c *Client) WithParams(p domain.ParamRewriter) *Client {
+	c.params = p
+	return c
+}
+
+// send posts a request struct after applying the target's parameter rules.
+func (c *Client) send(ctx context.Context, target domain.CallTarget, op, url string, body, out any) error {
+	m, err := httpx.ToMap(body)
+	if err != nil {
+		return err
+	}
+	return httpx.DoAdapted(ctx, c.httpClient, http.MethodPost, url, headers(target.Provider), m, out, errorMessage,
+		httpx.Adapt{Params: c.params, Target: target, Op: op})
+}
 
 // Message is one Messages API turn; content is sent as plain text.
 type Message struct {
@@ -130,8 +148,7 @@ func (c *Client) ChatCompletion(ctx context.Context, target domain.CallTarget, r
 	}
 
 	var out messagesResponse
-	if err := httpx.Do(ctx, c.httpClient, http.MethodPost, endpoint(target.Provider.BaseURL, "messages"),
-		headers(target.Provider), body, &out, errorMessage); err != nil {
+	if err := c.send(ctx, target, domain.ParamOpChat, endpoint(target.Provider.BaseURL, "messages"), body, &out); err != nil {
 		return domain.ChatResponse{}, err
 	}
 

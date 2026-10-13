@@ -37,7 +37,7 @@ func (c *Client) Vision(ctx context.Context, target domain.CallTarget, prompt, i
 		}}},
 	}
 	var out chatResponseBody
-	if err := c.post(ctx, target.Provider, "/chat/completions", body, &out); err != nil {
+	if err := c.post(ctx, target, domain.ParamOpChat, "/chat/completions", body, &out); err != nil {
 		return domain.ChatResponse{}, err
 	}
 	if out.Error != nil {
@@ -56,7 +56,7 @@ func (c *Client) GenerateImage(ctx context.Context, target domain.CallTarget, pr
 		} `json:"data"`
 		Error *upstreamError `json:"error,omitempty"`
 	}
-	if err := c.post(ctx, target.Provider, "/images/generations", body, &out); err != nil {
+	if err := c.post(ctx, target, domain.ParamOpImage, "/images/generations", body, &out); err != nil {
 		return domain.ImageResult{}, err
 	}
 	if out.Error != nil {

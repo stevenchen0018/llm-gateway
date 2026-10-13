@@ -13,7 +13,7 @@ export function getDeptScope(): number | undefined {
 }
 
 // Endpoints whose results are about the whole platform, not a tenant slice.
-const UNSCOPED = ['/admin/v1/departments', '/admin/v1/users', '/admin/v1/providers', '/admin/v1/provider-tests', '/admin/v1/models', '/admin/v1/announcements', '/admin/v1/auth/', '/admin/v1/my-models']
+const UNSCOPED = ['/admin/v1/departments', '/admin/v1/users', '/admin/v1/providers', '/admin/v1/provider-tests', '/admin/v1/param-rules', '/admin/v1/models', '/admin/v1/announcements', '/admin/v1/auth/', '/admin/v1/my-models']
 
 const http = axios.create({ baseURL: '', timeout: 90_000 })
 
